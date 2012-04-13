@@ -1,0 +1,51 @@
+
+# just made these up
+LEFT := 1
+RIGHT := 2
+UP := 3
+DOWN := 4
+
+WIDTH := 20
+HEIGHT := 20
+
+x := 0
+y := 0
+dx := 1
+dy := 2
+main := func() ->
+  while true
+    switch getChar()
+      when 0 # no input?
+      when LEFT
+        dx = -1
+        dy = 0
+      when RIGHT
+        dx = 1
+        dy = 0
+      when UP
+        dx = 0
+        dy = -1
+      when DOWN
+        dx = 0
+        dy = -1
+      else
+        quit()
+    tick()
+    render()
+
+tick := func() ->
+  x = (x + dx) % WIDTH
+  y = (y + dy) % HEIGHT
+
+render := func() ->
+  # paint the whole screen
+  for i in range HEIGHT
+    for j in range WIDTH
+      if x, y == j, i
+        printc 'X'
+      else
+        printc ' '
+    printc '\n'
+
+main()
+
