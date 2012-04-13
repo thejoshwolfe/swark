@@ -1,3 +1,13 @@
-swark - a small, powerful language that compiles to DCPU-16
+swark - a small, powerful language that compiles to DCPU-16 assembly.
 
-inspired by go, coffee-script, and python.
+Inspired by go, coffee-script, and python.
+
+To set up testing:
+
+    git clone https://github.com/mappum/DCPU-16.git
+    cd DCPU-16
+    sudo npm link
+
+To run the tests:
+
+    bin/test
