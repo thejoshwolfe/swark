@@ -1,28 +1,26 @@
 {
-  "name":         "coffee-script",
-  "description":  "Unfancy JavaScript",
-  "keywords":     ["javascript", "language", "coffeescript", "compiler"],
-  "author":       "Jeremy Ashkenas",
-  "version":      "1.3.1",
+  "name":         "swark",
+  "description":  "Small, powerful programming language which compiles to DCPU16",
+  "author":       "Andrew Kelley",
+  "version":      "0.0.0",
   "licenses":     [{
     "type":       "MIT",
-    "url":        "http://github.com/jashkenas/coffee-script/raw/master/LICENSE"
+    "url":        "http://github.com/superjoe30/swark/raw/master/LICENSE"
   }],
   "engines":      {
     "node":       ">=0.4.0"
   },
   "directories" : {
-    "lib" : "./lib/coffee-script"
+    "lib" : "./lib/swark"
   },
-  "main" : "./lib/coffee-script/coffee-script",
+  "main" : "./lib/swark/swark",
   "bin":          {
-    "coffee":     "./bin/coffee",
-    "cake":       "./bin/cake"
+    "swark":     "./bin/swark",
   },
-  "homepage":     "http://coffeescript.org",
+  "homepage":     "http://github.com/superjoe30/swark",
   "repository":   {
     "type": "git",
-    "url": "git://github.com/jashkenas/coffee-script.git"
+    "url": "git://github.com/superjoe30/swark.git"
   },
   "devDependencies": {
     "uglify-js":  ">=1.0.0",
