@@ -65,5 +65,8 @@ task 'build:parser', 'rebuild the Jison parser (run build first)', ->
   parser = require('./lib/swark/grammar').parser
   fs.writeFile 'lib/swark/parser.js', parser.generate()
 
-
+task 'clean', 'delete auto-generated files', ->
+  exec([
+    "rm -rf lib"
+  ])
 
