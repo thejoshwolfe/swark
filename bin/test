@@ -55,14 +55,14 @@ def execute_asm_code(asm_code):
     handle = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
     handle.write(asm_code)
     handle.close()
-    spim = subprocess.Popen([exe, '-file', handle.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = spim.communicate()
+    process = subprocess.Popen([exe, handle.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
     try:
         os.remove(handle.name)
     except:
         pass
 
-    return stdout
+    return (stdout, stderr, process.returncode)
 
 def main():
     parser = optparse.OptionParser()
@@ -105,7 +105,6 @@ def main():
 
     fails = []
     compiler_exe = absolute('bin/swark')
-    interpret_command = execute_asm_code
     passed = 0
     test_list = sorted(tests.iteritems())
     if options.backwards:
@@ -114,7 +113,7 @@ def main():
     # complain about missing files before showing progress
     for test_name, test in test_list:
         if not test.has_key('source'):
-            print("%s missing source" % test_name)
+            sys.exit("%s missing source" % test_name)
             continue
         if not test.has_key('errors'):
             test['errors'] = ''
@@ -122,103 +121,80 @@ def main():
             test['out'] = ''
 
     for test_name, test in test_list:
-        if not test.has_key('source'):
-            continue
-        if not test.has_key('errors'):
-            continue
-        if not test.has_key('out'):
-            continue
+        def add_fail(message, letter, long_message):
+            if options.verbose:
+                sys.stdout.write(message + "\n")
+            else:
+                sys.stdout.write(letter)
+            fails.append({'name': test_name, 'message': long_message})
+        fail_count = len(fails)
 
-        # try compiling the test file
-        if options.verbose:
-            sys.stdout.write(test_name + "...")
-            sys.stdout.flush()
-        compiler = subprocess.Popen([compiler_exe, '-s'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = compiler.communicate(test['source'])
-        if compiler.returncode not in [0, 1]:
+        def can_haz_goto():
+            # try compiling the test file
             if options.verbose:
-                sys.stdout.write("crash\n")
-            else:
-                sys.stdout.write('E')
-            fails.append({
-                'errors': test['errors'],
-                'output': stderr,
-                'stdout': stdout,
-                'name': test_name,
-                'crash': True,
-            })
-            if options.failfast:
-                break
-        elif stderr != test['errors']:
-            if options.verbose:
-                sys.stdout.write("fail\n")
-            else:
-                sys.stdout.write('F')
-            fails.append({
-                'errors': test['errors'],
-                'output': stderr,
-                'stdout': stdout,
-                'name': test_name,
-                'crash': False,
-            })
-            if options.failfast:
-                break
-        elif compiler.returncode != 1:
-            # compiler output correct, now test the generated code output
-            asm_output = interpret_command(stdout)
-            if asm_output != test['out']:
-                if options.verbose:
-                    sys.stdout.write("wrong\n")
-                else:
-                    sys.stdout.write('W')
-                fails.append({
-                    'expected_runout': test['out'],
-                    'runout': asm_output,
-                    'name': test_name,
-                    'crash': False,
-                })
-                if options.failfast:
-                    break
-            else:
-                if options.verbose:
-                    sys.stdout.write("pass\n")
-                else:
-                    sys.stdout.write('.')
-                passed += 1
-        else:
+                sys.stdout.write(test_name + "...")
+                sys.stdout.flush()
+            compiler = subprocess.Popen([compiler_exe, '-s'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            compiler_stdout, compiler_stderr = compiler.communicate(test['source'])
+
+            normal_behavior = compiler.returncode == 0 or \
+                              (compiler.returncode == 1 and compiler_stderr != "")
+            if not normal_behavior:
+                return add_fail("compiler crash", "C", """\
+---- Compiler stdout: ----
+%s\
+---- Compiler stderr: ----
+%s\
+--------
+The compiler exited with returncode %i\
+""" % (compiler_stdout, compiler_stderr, compiler.returncode))
+
+            if compiler_stderr != test['errors']:
+                return add_fail("wrong compiler stderr", "F", """\
+---- Compiler stderr: ----
+%s\
+---- Expected stderr: ----
+%s\
+--------""" % (compiler_stderr, test['errors']))
+
+            # compiler phase looks good, now test the generated code
+            (run_output, run_stderr, run_returncode) = execute_asm_code(compiler_stdout)
+
+            if run_returncode != 0 or run_stderr != "":
+                return add_fail("run program crashed", "R", """\
+---- Run Program stdout: ----
+%s\
+---- Run Program stderr: ----
+%s\
+--------
+Run program exited with returncode %i\
+""" % (run_output, run_stderr, run_returncode))
+
+            if run_output != test['out']:
+                return add_fail("wrong run output", "W", """\
+---- Run Program stdout: ----
+%s\
+---- Expected Program stdout: ----
+%s\
+--------""" % (run_output, test['out']))
+
+        can_haz_goto()
+        if len(fails) == fail_count:
+            # must have been a pass
             if options.verbose:
                 sys.stdout.write("pass\n")
             else:
                 sys.stdout.write('.')
             passed += 1
-
         sys.stdout.flush()
+        if len(fails) != 0 and options.failfast:
+            break
 
     if len(fails) > 0:
         if not options.quiet:
             print("\n=========================================")
             for fail in fails:
-                print("Test name: %(name)s" % fail)
-                if 'expected_runout' in fail:
-                    print("""\
----- Program Output: ----
-%(runout)s\
----- Expected Program Output: ----
-%(expected_runout)s\
---------""" % fail)
-                else:
-                    print("""\
----- Compiler Output: ----
-%(output)s\
----- Expected Compiler output: ----
-%(errors)s\
---------""" % fail)
-                    if fail['crash']:
-                        print("The program crashed.")
-                    if fail['stdout'].strip() != '':
-                        print("---- Compiler stdout ----")
-                        print(fail['stdout'])
-                        print("----------------")
+                print("Test name: %(name)s\n%(message)s" % fail)
                 print("=========================================")
         print("\n%i tests passed, %i tests failed." % (passed, len(fails)))
     else:
