@@ -21,7 +21,7 @@ sources = [
 
 # Run a source file through coffeescript
 run = (args, cb) ->
-  proc =         spawn 'coffee', args
+  proc =         spawn './node_modules/coffee-script/bin/coffee', args
   proc.stderr.on 'data', (buffer) -> console.log buffer.toString()
   proc.on        'exit', (status) ->
     process.exit(1) if status != 0
