@@ -4,10 +4,6 @@ Inspired by go, coffee-script, and python.
 
 To set up dependencies:
 
-    git clone https://github.com/mappum/DCPU-16.git
-    cd DCPU-16
-    sudo npm link
-
     cd swark
     sudo npm link
 
