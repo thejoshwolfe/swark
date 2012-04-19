@@ -18,8 +18,8 @@ To run the tests:
 
 To run a dcpu16 assembly program with stdio support:
 
-    ./bin/dcpu16exec program.dcpu16.asm
+    ./bin/dcpu16exec program.dasm
 
     Read/write characters from memory address 0x8fff to access stdio.
 
-    Write anything to memory address 0x8ffe to stop the program.
+    Write the return code to memory address 0x8ffe to stop the program.

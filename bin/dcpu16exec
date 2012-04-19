@@ -5,7 +5,7 @@ fs = require("fs")
 
 filename = process.argv[2]
 unless filename?
-  process.stderr.write "Usage: dcpu16exe [filename.dasm]\n"
+  process.stderr.write "Usage: dcpu16exec program.dasm\n"
   process.exit 1
 asm_code = fs.readFileSync(filename, 'utf8')
 
@@ -30,8 +30,11 @@ cpu.mapDevice 0x8fff, 1, do ->
       process.stdout.write String.fromCharCode(value)
 
 # write anything here to kill the program
+return_code = 1
 cpu.mapDevice 0x8ffe, 1,
-  set: -> cpu.stop()
+  set: (index, value) ->
+    return_code = value
+    cpu.stop()
 
 assembler = new dcpu16.Assembler(cpu)
 try
@@ -41,3 +44,4 @@ catch err
   process.exit 1
 
 cpu.run()
+process.exit return_code

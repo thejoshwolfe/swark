@@ -1,0 +1,13 @@
+:start
+    set a, text
+
+:nextchar
+    ife [a], 0
+        set [0x8ffe], 0
+    set [0x8fff], [a]
+    add a, 1
+    set PC, nextchar
+
+:text
+    dat "sup, dawg", 10, 0
+
