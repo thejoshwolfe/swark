@@ -8,12 +8,20 @@ To set up dependencies:
     cd DCPU-16
     sudo npm link
 
+    cd swark
+    sudo npm link
+
+To build:
+
+    cake build
+    cake build:parser
+
 To run the tests:
 
-    bin/test
+    ./bin/test
 
 To run a dcpu16 assembly program with stdio support:
 
-    bin/dcpu16exec program.dcpu16.asm
+    ./bin/dcpu16exec program.dcpu16.asm
 
     Read/write characters from memory address 0x8fff to access stdio.
