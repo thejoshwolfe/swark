@@ -49,7 +49,7 @@ def absolute(relative_path):
 
 def execute_asm_code(asm_code):
     "execute asm_code and return stdout"
-    exe = which('dcpu16')
+    exe = 'bin/dcpu16exec'
 
     # save asm_code to a file
     handle = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)

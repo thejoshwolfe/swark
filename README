@@ -2,7 +2,7 @@ swark - a small, powerful language that compiles to DCPU-16 assembly.
 
 Inspired by go, coffee-script, and python.
 
-To set up testing:
+To set up dependencies:
 
     git clone https://github.com/mappum/DCPU-16.git
     cd DCPU-16
@@ -11,3 +11,9 @@ To set up testing:
 To run the tests:
 
     bin/test
+
+To run a dcpu16 assembly program with stdio support:
+
+    bin/dcpu16exec program.dcpu16.asm
+
+    Read/write characters from memory address 0x8fff to access stdio.
