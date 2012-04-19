@@ -1,6 +1,4 @@
-# The `coffee` utility. Handles command-line compilation of CoffeeScript
-# into various forms: saved into `.js` files or printed to stdout, piped to
-# [JavaScript Lint](http://javascriptlint.com/) or recompiled every time the source is
+# The `swark` utility. Handles command-line compilation of swark
 # saved, printed as a token stream or as the syntax tree, or launch an
 # interactive REPL.
 
@@ -9,33 +7,30 @@ fs             = require 'fs'
 path           = require 'path'
 helpers        = require './helpers'
 optparse       = require './optparse'
-CoffeeScript   = require './coffee-script'
+Swark          = require './swark'
 {spawn, exec}  = require 'child_process'
 {EventEmitter} = require 'events'
 
-# Allow CoffeeScript to emit Node.js events.
-helpers.extend CoffeeScript, new EventEmitter
+# Allow emitting Node.js events.
+helpers.extend Swark, new EventEmitter
 
 printLine = (line) -> process.stdout.write line + '\n'
 printWarn = (line) -> process.stderr.write line + '\n'
 
 hidden = (file) -> /^\.|~$/.test file
 
-# The help banner that is printed when `coffee` is called without arguments.
+# The help banner that is printed when `swark` is called without arguments.
 BANNER = '''
-  Usage: coffee [options] path/to/script.coffee -- [args]
-
-  If called without options, `coffee` will run your script.
+  Usage: swark [options] path/to/code.swark -- [args]
 '''
 
-# The list of all the valid option flags that `coffee` knows how to handle.
+# The list of all the valid option flags that `swark` knows how to handle.
 SWITCHES = [
   ['-b', '--bare',            'compile without a top-level function wrapper']
   ['-c', '--compile',         'compile to JavaScript and save as .js files']
   ['-e', '--eval',            'pass a string from the command line as input']
   ['-h', '--help',            'display this help message']
-  ['-i', '--interactive',     'run an interactive CoffeeScript REPL']
-  ['-j', '--join [FILE]',     'concatenate the source CoffeeScript before compiling']
+  ['-i', '--interactive',     'run an interactive REPL']
   ['-l', '--lint',            'pipe the compiled JavaScript through JavaScript Lint']
   ['-n', '--nodes',           'print out the parse tree that the parser produces']
   [      '--nodejs [ARGS]',   'pass options directly to the "node" binary']
@@ -56,7 +51,7 @@ notSources   = {}
 watchers     = {}
 optionParser = null
 
-# Run `coffee` by parsing passed options and determining what action to take.
+# Run `swark` by parsing passed options and determining what action to take.
 # Many flags cause us to divert before compiling anything. Flags passed after
 # `--` will be passed verbatim to your script as arguments in `process.argv`
 exports.run = ->
@@ -73,20 +68,20 @@ exports.run = ->
   return require './repl'                unless sources.length
   literals = if opts.run then sources.splice 1 else []
   process.argv = process.argv[0..1].concat literals
-  process.argv[0] = 'coffee'
+  process.argv[0] = 'swark'
   process.execPath = require.main.filename
   for source in sources
     compilePath source, yes, path.normalize source
 
 # Compile a path, which could be a script or a directory. If a directory
-# is passed, recursively compile all '.coffee' extension source files in it
+# is passed, recursively compile all '.swark' extension source files in it
 # and all subdirectories.
 compilePath = (source, topLevel, base) ->
   fs.stat source, (err, stats) ->
     throw err if err and err.code isnt 'ENOENT'
     if err?.code is 'ENOENT'
-      if topLevel and source[-7..] isnt '.coffee'
-        source = sources[sources.indexOf(source)] = "#{source}.coffee"
+      if topLevel and source[-7..] isnt '.swark'
+        source = sources[sources.indexOf(source)] = "#{source}.swark"
         return compilePath source, topLevel, base
       if topLevel
         console.error "File not found: #{source}"
@@ -102,7 +97,7 @@ compilePath = (source, topLevel, base) ->
         sourceCode[index..index] = files.map -> null
         for file in files when not hidden file
           compilePath (path.join source, file), no, base
-    else if topLevel or path.extname(source) is '.coffee'
+    else if topLevel or path.extname(source) is '.swark'
       watch source, base if opts.watch
       fs.readFile source, (err, code) ->
         throw err if err and err.code isnt 'ENOENT'
@@ -121,22 +116,22 @@ compileScript = (file, input, base) ->
   options = compileOptions file
   try
     t = task = {file, input, options}
-    CoffeeScript.emit 'compile', task
-    if      o.tokens      then printTokens CoffeeScript.tokens t.input
-    else if o.nodes       then printLine CoffeeScript.nodes(t.input).toString().trim()
-    else if o.run         then CoffeeScript.run t.input, t.options
+    Swark.emit 'compile', task
+    if      o.tokens      then printTokens Swark.tokens t.input
+    else if o.nodes       then printLine Swark.nodes(t.input).toString().trim()
+    else if o.run         then Swark.run t.input, t.options
     else if o.join and t.file isnt o.join
       sourceCode[sources.indexOf(t.file)] = t.input
       compileJoin()
     else
-      t.output = CoffeeScript.compile t.input, t.options
-      CoffeeScript.emit 'success', task
+      t.output = Swark.compile t.input, t.options
+      Swark.emit 'success', task
       if o.print          then printLine t.output.trim()
       else if o.compile   then writeJs t.file, t.output, base
       else if o.lint      then lint t.file, t.output
   catch err
-    CoffeeScript.emit 'failure', err, task
-    return if CoffeeScript.listeners('failure').length
+    Swark.emit 'failure', err, task
+    return if Swark.listeners('failure').length
     return printLine err.message + '\x07' if o.watch
     printWarn err instanceof Error and err.stack or "ERROR: #{err}"
     process.exit 1
@@ -168,7 +163,7 @@ loadRequires = ->
   require req for req in opts.require
   module.filename = realFilename
 
-# Watch a source CoffeeScript file using `fs.watch`, recompiling it every
+# Watch a source file using `fs.watch`, recompiling it every
 # time the file is updated. May be used in combination with other options,
 # such as `--lint` or `--print`.
 watch = (source, base) ->
@@ -313,7 +308,7 @@ parseOptions = ->
   sourceCode[i] = null for source, i in sources
   return
 
-# The compile-time options to pass to the CoffeeScript compiler.
+# The compile-time options to pass to the compiler.
 compileOptions = (filename) ->
   {filename, bare: opts.bare, header: opts.compile}
 
@@ -335,4 +330,4 @@ usage = ->
 
 # Print the `--version` message and exit.
 version = ->
-  printLine "CoffeeScript version #{CoffeeScript.VERSION}"
+  printLine "swark version #{Swark.VERSION}"

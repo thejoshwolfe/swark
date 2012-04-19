@@ -2,14 +2,13 @@
 # and evaluates it. Good for simple tests, or poking around the **Node.js** API.
 # Using it looks like this:
 #
-#     coffee> console.log "#{num} bottles of beer" for num in [99..1]
+#     swark> console.log "#{num} bottles of beer" for num in [99..1]
 
 # Start by opening up `stdin` and `stdout`.
 stdin = process.openStdin()
 stdout = process.stdout
 
-# Require the **coffee-script** module to get access to the compiler.
-CoffeeScript = require './coffee-script'
+Swark = require './swark'
 readline     = require 'readline'
 {inspect}    = require 'util'
 {Script}     = require 'vm'
@@ -18,7 +17,7 @@ Module       = require 'module'
 # REPL Setup
 
 # Config
-REPL_PROMPT = 'coffee> '
+REPL_PROMPT = 'swark> '
 REPL_PROMPT_MULTILINE = '------> '
 REPL_PROMPT_CONTINUATION = '......> '
 enableColours = no
@@ -56,7 +55,7 @@ completeVariable = (text) ->
   free = "" if text is ""
   if free?
     vars = Script.runInThisContext 'Object.getOwnPropertyNames(Object(this))'
-    keywords = (r for r in CoffeeScript.RESERVED when r[..1] isnt '__')
+    keywords = (r for r in Swark.RESERVED when r[..1] isnt '__')
     possibilities = vars.concat keywords
     completions = getCompletions free, possibilities
     [completions, free]
@@ -97,7 +96,7 @@ run = (buffer) ->
   backlog = ''
   try
     _ = global._
-    returnValue = CoffeeScript.eval "_=(#{code}\n)", {
+    returnValue = Swark.eval "_=(#{code}\n)", {
       filename: 'repl'
       modulename: 'repl'
     }

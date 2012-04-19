@@ -1,4 +1,4 @@
-# The CoffeeScript Lexer. Uses a series of token-matching regexes to attempt
+# The Lexer. Uses a series of token-matching regexes to attempt
 # matches against the beginning of the source code. When a match is found,
 # a token is produced, we consume the match, and start again. Tokens are in the
 # form:
@@ -15,7 +15,7 @@
 # The Lexer Class
 # ---------------
 
-# The Lexer class reads a stream of CoffeeScript and divvies it up into tagged
+# The Lexer class reads a stream of code and divvies it up into tagged
 # tokens. Some potential ambiguity in the grammar has been avoided by
 # pushing some extra smarts into the Lexer.
 exports.Lexer = class Lexer
@@ -70,7 +70,7 @@ exports.Lexer = class Lexer
 
   # Matches identifying literals: variables, keywords, method names, etc.
   # Check to ensure that JavaScript reserved words aren't being used as
-  # identifiers. Because CoffeeScript reserves a handful of keywords that are
+  # identifiers. Because we reserve a handful of keywords that are
   # allowed in JavaScript, we're careful not to tag them as keywords when
   # referenced as property names here, so you can still do `jQuery.is()` even
   # though `is` means `===` otherwise.
@@ -86,7 +86,7 @@ exports.Lexer = class Lexer
       not prev.spaced and prev[0] is '@')
     tag = 'IDENTIFIER'
 
-    if not forcedIdentifier and (id in JS_KEYWORDS or id in COFFEE_KEYWORDS)
+    if not forcedIdentifier and (id in JS_KEYWORDS or id in SWARK_KEYWORDS)
       tag = id.toUpperCase()
       if tag is 'WHEN' and @tag() in LINE_BREAK
         tag = 'LEADING_WHEN'
@@ -111,11 +111,8 @@ exports.Lexer = class Lexer
         tag = 'IDENTIFIER'
         id  = new String id
         id.reserved = yes
-      else if id in RESERVED
-        @error "reserved word \"#{id}\""
 
     unless forcedIdentifier
-      id  = COFFEE_ALIAS_MAP[id] if id in COFFEE_ALIASES
       tag = switch id
         when '!'                                  then 'UNARY'
         when '==', '!='                           then 'COMPARE'
@@ -547,7 +544,7 @@ exports.Lexer = class Lexer
 # Constants
 # ---------
 
-# Keywords that CoffeeScript shares in common with JavaScript.
+# Keywords shared in common with JavaScript.
 JS_KEYWORDS = [
   'true', 'false', 'null', 'this'
   'new', 'delete', 'typeof', 'in', 'instanceof'
@@ -556,41 +553,16 @@ JS_KEYWORDS = [
   'class', 'extends', 'super'
 ]
 
-# CoffeeScript-only keywords.
-COFFEE_KEYWORDS = ['undefined', 'then', 'unless', 'until', 'loop', 'of', 'by', 'when']
-
-COFFEE_ALIAS_MAP =
-  and  : '&&'
-  or   : '||'
-  is   : '=='
-  isnt : '!='
-  not  : '!'
-  yes  : 'true'
-  no   : 'false'
-  on   : 'true'
-  off  : 'false'
-
-COFFEE_ALIASES  = (key for key of COFFEE_ALIAS_MAP)
-COFFEE_KEYWORDS = COFFEE_KEYWORDS.concat COFFEE_ALIASES
-
-# The list of keywords that are reserved by JavaScript, but not used, or are
-# used by CoffeeScript internally. We throw an error when these are encountered,
-# to avoid having a JavaScript error at runtime.
-RESERVED = [
-  'case', 'default', 'function', 'var', 'void', 'with'
-  'const', 'let', 'enum', 'export', 'import', 'native'
-  '__hasProp', '__extends', '__slice', '__bind', '__indexOf'
-  'implements', 'interface', 'let', 'package',
-  'private', 'protected', 'public', 'static', 'yield'
-]
+# swark-only keywords.
+SWARK_KEYWORDS = ['undefined', 'then', 'unless', 'until', 'loop', 'of', 'by', 'when']
 
 STRICT_PROSCRIBED = ['arguments', 'eval']
 
 # The superset of both JavaScript keywords and reserved words, none of which may
 # be used as identifiers or properties.
-JS_FORBIDDEN = JS_KEYWORDS.concat(RESERVED).concat(STRICT_PROSCRIBED)
+JS_FORBIDDEN = JS_KEYWORDS.concat(STRICT_PROSCRIBED)
 
-exports.RESERVED = RESERVED.concat(JS_KEYWORDS).concat(COFFEE_KEYWORDS).concat(STRICT_PROSCRIBED)
+exports.RESERVED = JS_KEYWORDS.concat(SWARK_KEYWORDS).concat(STRICT_PROSCRIBED)
 exports.STRICT_PROSCRIBED = STRICT_PROSCRIBED
 
 # Token matching regexes.

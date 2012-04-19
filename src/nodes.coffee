@@ -1,4 +1,4 @@
-# `nodes.coffee` contains all of the node classes for the syntax tree. Most
+# this file contains all of the node classes for the syntax tree. Most
 # nodes are created as the result of actions in the [grammar](grammar.html),
 # but some are created by other nodes as a method of code generation. To convert
 # the syntax tree into a string of JavaScript code, call `compile()` on the root.
@@ -106,7 +106,7 @@ exports.Base = class Base
     null
 
   # `toString` representation of the node, for inspecting the parse tree.
-  # This is what `coffee --nodes` prints out.
+  # This is what `swark --nodes` prints out.
   toString: (idt = '', name = @constructor.name) ->
     tree = '\n' + idt + name
     tree += '?' if @soak
@@ -459,7 +459,7 @@ exports.Value = class Value extends Base
 
 #### Comment
 
-# CoffeeScript passes through block comments as JavaScript block comments
+# pass through block comments as JavaScript block comments
 # at the same position.
 exports.Comment = class Comment extends Base
   constructor: (@comment) ->
@@ -846,7 +846,7 @@ exports.Arr = class Arr extends Base
 
 #### Class
 
-# The CoffeeScript class definition.
+# The Swark class definition.
 # Initialize a **Class** with its name, an optional superclass, and a
 # list of prototype property assignments.
 exports.Class = class Class extends Base
@@ -1332,7 +1332,7 @@ exports.Splat = class Splat extends Base
 
 #### While
 
-# A while loop, the only sort of low-level loop exposed by CoffeeScript. From
+# A while loop, the only sort of low-level loop exposed. From
 # it, all other loops can be manufactured. Useful in cases where you need more
 # flexibility or more speed than a comprehension can provide.
 exports.While = class While extends Base
@@ -1361,7 +1361,7 @@ exports.While = class While extends Base
       return node if node.jumps loop: yes
     no
 
-  # The main difference from a JavaScript *while* is that the CoffeeScript
+  # The main difference from a JavaScript *while* is that our
   # *while* can be used as a part of a larger expression -- while loops may
   # return an array containing the computed result of each iteration.
   compileNode: (o) ->
@@ -1388,7 +1388,7 @@ exports.While = class While extends Base
 #### Op
 
 # Simple Arithmetic and logical operations. Performs some conversion from
-# CoffeeScript operations into their JavaScript equivalents.
+# our operations into their JavaScript equivalents.
 exports.Op = class Op extends Base
   constructor: (op, first, second, flip ) ->
     return new In first, second if op is 'in'
@@ -1397,17 +1397,11 @@ exports.Op = class Op extends Base
     if op is 'new'
       return first.newInstance() if first instanceof Call and not first.do and not first.isNew
       first = new Parens first   if first instanceof Code and first.bound or first.do
-    @operator = CONVERSIONS[op] or op
+    @operator = op
     @first    = first
     @second   = second
     @flip     = !!flip
     return this
-
-  # The map of conversions from CoffeeScript to JavaScript symbols.
-  CONVERSIONS =
-    '==': '==='
-    '!=': '!=='
-    'of': 'in'
 
   # The map of invertible operators.
   INVERSIONS =
@@ -1494,7 +1488,7 @@ exports.Op = class Op extends Base
   # Mimic Python's chained comparisons when multiple comparison operators are
   # used sequentially. For example:
   #
-  #     bin/coffee -e 'console.log 50 < 65 > 10'
+  #     bin/swark -e 'console.log 50 < 65 > 10'
   #     true
   compileChain: (o) ->
     [@first.second, shared] = @first.second.cache o
@@ -1670,7 +1664,7 @@ exports.Parens = class Parens extends Base
 
 #### For
 
-# CoffeeScript's replacement for the *for* loop is our array and object
+# our replacement for the *for* loop is our array and object
 # comprehensions, that compile into *for* loops here. They also act as an
 # expression, able to return the result of each filtered iteration.
 #
@@ -1693,7 +1687,7 @@ exports.For = class For extends While
 
   children: ['body', 'source', 'guard', 'step']
 
-  # Welcome to the hairiest method in all of CoffeeScript. Handles the inner
+  # Welcome to the hairiest method in all of swarkland. Handles the inner
   # loop, filtering, stepping, and result saving for array, object, and range
   # comprehensions. Some of the generated code can be shared in common, and
   # some cannot.
