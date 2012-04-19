@@ -9,7 +9,10 @@ unless filename?
   process.exit 1
 asm_code = fs.readFileSync(filename, 'utf8')
 
-createIoDevice = ->
+cpu = new dcpu16.CPU()
+
+# stdin/stdout
+cpu.mapDevice 0x8fff, 1, do ->
   buffer = ""
   already_listening = false
   listen = ->
@@ -26,8 +29,10 @@ createIoDevice = ->
     set: (index, value) ->
       process.stdout.write String.fromCharCode(value)
 
-cpu = new dcpu16.CPU()
-cpu.mapDevice 0x8fff, 1, createIoDevice()
+# write anything here to kill the program
+cpu.mapDevice 0x8ffe, 1,
+  set: -> cpu.stop()
+
 assembler = new dcpu16.Assembler(cpu)
 try
   assembler.compile asm_code
