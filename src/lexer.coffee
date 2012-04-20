@@ -568,7 +568,7 @@ exports.STRICT_PROSCRIBED = STRICT_PROSCRIBED
 # Token matching regexes.
 IDENTIFIER = /// ^
   ( [$A-Za-z_\x7f-\uffff][$\w\x7f-\uffff]* )
-  ( [^\n\S]* : (?!:) )?  # Is this a property name?
+  ( [^\n\S]* : (?![:=]) )?  # Is this a property name?
 ///
 
 NUMBER     = ///
@@ -582,7 +582,7 @@ HEREDOC    = /// ^ ("""|''') ([\s\S]*?) (?:\n[^\n\S]*)? \1 ///
 
 OPERATOR   = /// ^ (
   ?: [-=]>             # function
-   | [-+*/%<>&|^!?=]=  # compound assign / compare
+   | [-+*/%:<>&|^!?=]= # compound assign / compare
    | >>>=?             # zero-fill right shift
    | ([-+:])\1         # doubles
    | ([&|<>])\2=?      # logic / shift
