@@ -20,7 +20,7 @@ exports.helpers = require './helpers'
 # Compile a string of code 
 exports.compile = compile = (code, options = {}) ->
   try
-    dasm = (parser.parse lexer.tokenize code).compile options
+    dasm = (parser.parse lexer.tokenize code).compileRoot options
   catch err
     err.message = "In #{options.filename}, #{err.message}" if options.filename
     throw err

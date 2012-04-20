@@ -161,9 +161,19 @@ exports.Block = class Block extends Base
     this
 
   # A **Block** is the only node that can serve as the root.
-  compile: () ->
+  compileRoot: ->
+    code = @compile()
     stdlib_contents = stdlib.printc
-    "set [0x8ffe], 0\n\n#{stdlib_contents}"
+    return [
+      code
+      "set [0x8ffe], 0\n"
+      stdlib_contents
+    ].join "\n"
+  compile: ->
+    codes = []
+    for expression in @expressions
+      codes.push expression.compile()
+    codes.join "\n"
 
   # Wrap up the given nodes as a **Block**, unless it already happens
   # to be one.
@@ -284,6 +294,16 @@ exports.Call = class Call extends Base
     @variable = if @isSuper then null else variable
 
   children: ['variable', 'args']
+
+  compile: ->
+    throw SyntaxError 'can only call "printc"' unless @variable.base.value == "printc"
+    throw SyntaxError 'function "printc" takes 1 argument' unless @args.length == 1
+    throw SyntaxError 'function arguments must be literal integers' if isNaN parseInt @args[0].base.value
+    mangle = (name) -> name
+    return [
+      "set push, #{@args[0].base.value}"
+      "jsr #{mangle @variable.base.value}"
+    ].join("\n")
 
   # Tag this invocation as creating a new instance.
   newInstance: ->
