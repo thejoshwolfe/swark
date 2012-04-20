@@ -100,7 +100,7 @@ def main():
     for test_name, test in test_list:
         def add_fail(message, letter, long_message):
             if options.verbose:
-                sys.stdout.write(message + "\n")
+                sys.stdout.write("\x1B[0;31m" + message + "\x1B[0m\n")
             else:
                 sys.stdout.write(letter)
             fails.append({'name': test_name, 'message': long_message})
@@ -159,7 +159,7 @@ Run program exited with returncode %i\
         if len(fails) == fail_count:
             # must have been a pass
             if options.verbose:
-                sys.stdout.write("pass\n")
+                sys.stdout.write("\x1B[0;32mpass\x1B[0m\n")
             else:
                 sys.stdout.write('.')
             passed += 1
