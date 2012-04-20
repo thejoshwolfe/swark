@@ -39,7 +39,7 @@ exports.Base = class Base
   compile: (o, lvl) ->
     o        = extend {}, o
     o.level  = lvl if lvl
-    node     = @unfoldSoak(o) or this
+    node     = this
     node.tab = o.indent
     if o.level is LEVEL_TOP or not node.isStatement(o)
       node.compileNode o
@@ -53,18 +53,6 @@ exports.Base = class Base
       throw SyntaxError 'cannot use a pure statement in an expression.'
     o.sharedScope = yes
     Closure.wrap(this).compileNode o
-
-  # If the code generation wishes to use the result of a complex expression
-  # in multiple places, ensure that the expression is only ever evaluated once,
-  # by assigning it to a temporary variable. Pass a level to precompile.
-  cache: (o, level, reused) ->
-    unless @isComplex()
-      ref = if level then @compile o, level else this
-      [ref, ref]
-    else
-      ref = new Literal reused or o.scope.freeVariable 'ref'
-      sub = new Assign ref, this
-      if level then [sub.compile(o, level), ref.value] else [sub, ref]
 
   # Compile to a source/variable pair suitable for looping.
   compileLoopReference: (o, name) ->
@@ -109,7 +97,6 @@ exports.Base = class Base
   # This is what `swark --nodes` prints out.
   toString: (idt = '', name = @constructor.name) ->
     tree = '\n' + idt + name
-    tree += '?' if @soak
     @eachChild (node) -> tree += node.toString idt + TAB
     tree
 
@@ -145,7 +132,6 @@ exports.Base = class Base
   isAssignable    : NO
 
   unwrap     : THIS
-  unfoldSoak : NO
 
   # Is this node used to assign a certain variable?
   assigns: NO
@@ -218,7 +204,6 @@ exports.Block = class Block extends Base
     codes = []
     for node in @expressions
       node = node.unwrapAll()
-      node = (node.unfoldSoak(o) or node)
       if node instanceof Block
         # This is a nested block.  We don't do anything special here like enclose
         # it in a new scope; we just compile the statements in this block along with
@@ -389,7 +374,7 @@ exports.Value = class Value extends Base
   isString       : -> @base instanceof Literal and IS_STRING.test @base.value
   isAtomic       : ->
     for node in @properties.concat @base
-      return no if node.soak or node instanceof Call
+      return no if node instanceof Call
     yes
 
   isStatement : (o)    -> not @properties.length and @base.isStatement o
@@ -408,28 +393,7 @@ exports.Value = class Value extends Base
   unwrap: ->
     if @properties.length then this else @base
 
-  # A reference has base part (`this` value) and name part.
-  # We cache them separately for compiling complex expressions.
-  # `a()[b()] ?= c` -> `(_base = a())[_name = b()] ? _base[_name] = c`
-  cacheReference: (o) ->
-    name = last @properties
-    if @properties.length < 2 and not @base.isComplex() and not name?.isComplex()
-      return [this, this]  # `a` `a.b`
-    base = new Value @base, @properties[...-1]
-    if base.isComplex()  # `a().b`
-      bref = new Literal o.scope.freeVariable 'base'
-      base = new Value new Parens new Assign bref, base
-    return [base, bref] unless name  # `a()`
-    if name.isComplex()  # `a[b()]`
-      nref = new Literal o.scope.freeVariable 'name'
-      name = new Index new Assign nref, name.index
-      nref = new Index nref
-    [base.add(name), new Value(bref or base.base, [nref or name])]
-
   # We compile a value to JavaScript by compiling and joining each property.
-  # Things get much more interesting if the chain of properties has *soak*
-  # operators `?.` interspersed. Then we have to take care not to accidentally
-  # evaluate anything twice when building the soak chain.
   compileNode: (o) ->
     @base.front = @front
     props = @properties
@@ -437,25 +401,6 @@ exports.Value = class Value extends Base
     code  = "#{code}." if (@base instanceof Parens or props.length) and SIMPLENUM.test code
     code += prop.compile o for prop in props
     code
-
-  # Unfold a soak into an `If`: `a?.b` -> `a.b if a?`
-  unfoldSoak: (o) ->
-    return @unfoldedSoak if @unfoldedSoak?
-    result = do =>
-      if ifn = @base.unfoldSoak o
-        Array::push.apply ifn.body.properties, @properties
-        return ifn
-      for prop, i in @properties when prop.soak
-        prop.soak = off
-        fst = new Value @base, @properties[...i]
-        snd = new Value @base, @properties[i..]
-        if fst.isComplex()
-          ref = new Literal o.scope.freeVariable 'ref'
-          fst = new Parens new Assign ref, fst
-          snd.base = ref
-        return new If new Existence(fst), snd, soak: on
-      null
-    @unfoldedSoak = result or no
 
 #### Comment
 
@@ -477,7 +422,7 @@ exports.Comment = class Comment extends Base
 # Node for a function invocation. Takes care of converting `super()` calls into
 # calls against the prototype's function of the same name.
 exports.Call = class Call extends Base
-  constructor: (variable, @args = [], @soak) ->
+  constructor: (variable, @args = []) ->
     @isNew    = false
     @isSuper  = variable is 'super'
     @variable = if @isSuper then null else variable
@@ -507,38 +452,6 @@ exports.Call = class Call extends Base
       (new Value (new Literal method.klass), accesses).compile o
     else
       "#{name}.__super__.constructor"
-
-  # Soaked chained invocations unfold into if/else ternary structures.
-  unfoldSoak: (o) ->
-    if @soak
-      if @variable
-        return ifn if ifn = unfoldSoak o, this, 'variable'
-        [left, rite] = new Value(@variable).cacheReference o
-      else
-        left = new Literal @superReference o
-        rite = new Value left
-      rite = new Call rite, @args
-      rite.isNew = @isNew
-      left = new Literal "typeof #{ left.compile o } === \"function\""
-      return new If left, new Value(rite), soak: yes
-    call = this
-    list = []
-    loop
-      if call.variable instanceof Call
-        list.push call
-        call = call.variable
-        continue
-      break unless call.variable instanceof Value
-      list.push call
-      break unless (call = call.variable.base) instanceof Call
-    for call in list.reverse()
-      if ifn
-        if call.variable instanceof Call
-          call.variable = ifn
-        else
-          call.variable.base = ifn
-      ifn = unfoldSoak o, call, 'variable'
-    ifn
 
   # Walk through the objects in the arguments, moving over simple values.
   # This allows syntax like `call a: b, c` into `call({a: b}, c);`
@@ -625,7 +538,6 @@ exports.Extends = class Extends extends Base
 exports.Access = class Access extends Base
   constructor: (@name, tag) ->
     @name.asKey = yes
-    @soak  = tag is 'soak'
 
   children: ['name']
 
@@ -1002,9 +914,6 @@ exports.Assign = class Assign extends Base
 
   assigns: (name) ->
     @[if @context is 'object' then 'value' else 'variable'].assigns name
-
-  unfoldSoak: (o) ->
-    unfoldSoak o, this, 'variable'
 
   # Compile an assignment, delegating to `compilePatternMatch` or
   # `compileSplice` if appropriate. Keep track of the name of the base object
@@ -1450,9 +1359,6 @@ exports.Op = class Op extends Base
     else
       new Op '!', this
 
-  unfoldSoak: (o) ->
-    @operator in ['++', '--', 'delete'] and unfoldSoak o, this, 'first'
-
   generateDo: (exp) ->
     passedParams = []
     func = if exp instanceof Assign and (ref = exp.value.unwrap()) instanceof Code
@@ -1818,7 +1724,6 @@ exports.If = class If extends Base
     @condition = if options.type is 'unless' then condition.invert() else condition
     @elseBody  = null
     @isChain   = false
-    {@soak}    = options
 
   children: ['condition', 'body', 'elseBody']
 
@@ -1884,9 +1789,6 @@ exports.If = class If extends Base
     code = "#{cond} ? #{body} : #{alt}"
     if o.level >= LEVEL_COND then "(#{code})" else code
 
-  unfoldSoak: ->
-    @soak and this
-
 # Faux-Nodes
 # ----------
 # Faux-nodes are never created by the grammar, but are used during code
@@ -1919,13 +1821,6 @@ Closure =
   literalThis: (node) ->
     (node instanceof Literal and node.value is 'this' and not node.asKey) or
       (node instanceof Code and node.bound)
-
-# Unfold a node's child if soak, then tuck the node under created `If`
-unfoldSoak = (o, parent, name) ->
-  return unless ifn = parent[name].unfoldSoak o
-  parent[name] = ifn.body
-  ifn.body = new Value parent
-  ifn
 
 # Constants
 # ---------
