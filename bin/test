@@ -68,6 +68,17 @@ def main():
             tests[test_name]['out'] = expected_output
         else: # ext == '.swark'
             tests[test_name]['source'] = open(absolute(f), 'r').read()
+    retain_names = set()
+    for arg in args:
+        if arg.endswith(".swark"):
+            arg = arg[:-len(".swark")]
+        if arg not in tests:
+            sys.exit("test not found: " + arg)
+        retain_names.add(arg)
+    if len(retain_names) != 0:
+        for test_name in list(tests.keys()):
+            if test_name not in retain_names:
+                del tests[test_name]
 
     fails = []
     compiler_exe = absolute('bin/swark')
