@@ -86,7 +86,7 @@ exports.Lexer = class Lexer
       not prev.spaced and prev[0] is '@')
     tag = 'IDENTIFIER'
 
-    if not forcedIdentifier and (id in JS_KEYWORDS or id in SWARK_KEYWORDS)
+    if not forcedIdentifier and (id in RESERVED)
       tag = id.toUpperCase()
       if tag is 'WHEN' and @tag() in LINE_BREAK
         tag = 'LEADING_WHEN'
@@ -106,18 +106,17 @@ exports.Lexer = class Lexer
             @tokens.pop()
             id = '!' + id
 
-    if id in JS_FORBIDDEN
-      if forcedIdentifier
-        tag = 'IDENTIFIER'
-        id  = new String id
-        id.reserved = yes
+    if forcedIdentifier
+      tag = 'IDENTIFIER'
+      id  = new String id
+      id.reserved = yes
 
     unless forcedIdentifier
       tag = switch id
         when '!'                                  then 'UNARY'
         when '==', '!='                           then 'COMPARE'
         when '&&', '||'                           then 'LOGIC'
-        when 'true', 'false', 'null', 'undefined' then 'BOOL'
+        when 'true', 'false'                      then 'BOOL'
         when 'break', 'continue'                  then 'STATEMENT'
         else  tag
 
@@ -336,9 +335,6 @@ exports.Lexer = class Lexer
       value = @chunk.charAt 0
     tag  = value
     prev = last @tokens
-    if value in ASSIGN and prev
-      if not prev[1].reserved and prev[1] in JS_FORBIDDEN
-        @error "reserved word \"#{@value()}\" can't be assigned"
     if value is '=' and prev
       if prev[1] in ['||', '&&']
         prev[0] = 'COMPOUND_ASSIGN'
@@ -546,26 +542,29 @@ exports.Lexer = class Lexer
 # Constants
 # ---------
 
-# Keywords shared in common with JavaScript.
-JS_KEYWORDS = [
-  'true', 'false', 'null', 'this'
-  'new', 'delete', 'typeof', 'in', 'instanceof'
-  'return', 'throw', 'break', 'continue', 'debugger'
-  'if', 'else', 'switch', 'for', 'while', 'do', 'try', 'catch', 'finally'
-  'class', 'extends', 'super'
+RESERVED = [
+  'true'
+  'false'
+  'in'
+  'return'
+  'break'
+  'continue'
+  'if'
+  'else'
+  'switch'
+  'for'
+  'while'
+  'do'
+  'then'
+  'unless'
+  'until'
+  'loop'
+  'of'
+  'by'
+  'when'
 ]
 
-# swark-only keywords.
-SWARK_KEYWORDS = ['undefined', 'then', 'unless', 'until', 'loop', 'of', 'by', 'when']
-
-STRICT_PROSCRIBED = ['arguments', 'eval']
-
-# The superset of both JavaScript keywords and reserved words, none of which may
-# be used as identifiers or properties.
-JS_FORBIDDEN = JS_KEYWORDS.concat(STRICT_PROSCRIBED)
-
-exports.RESERVED = JS_KEYWORDS.concat(SWARK_KEYWORDS).concat(STRICT_PROSCRIBED)
-exports.STRICT_PROSCRIBED = STRICT_PROSCRIBED
+exports.RESERVED = RESERVED
 
 # Token matching regexes.
 IDENTIFIER = /// ^

@@ -4,7 +4,6 @@
 # the syntax tree into a string of JavaScript code, call `compile()` on the root.
 
 {Scope} = require './scope'
-{RESERVED, STRICT_PROSCRIBED} = require './lexer'
 stdlib = require './stdlib'
 
 # Import the helpers we plan to use.
@@ -495,8 +494,6 @@ exports.Class = class Class extends Base
       tail instanceof Access and tail.name.value
     else
       @variable.base.value
-    if decl in STRICT_PROSCRIBED
-      throw SyntaxError "variable name may not be #{decl}"
     decl and= IDENTIFIER.test(decl) and decl
 
   # For all `this`-references and bound functions in the class definition,
@@ -570,9 +567,6 @@ exports.Assign = class Assign extends Base
   constructor: (@variable, @value, @context, options) ->
     @param = options and options.param
     @subpattern = options and options.subpattern
-    forbidden = (name = @variable.unwrapAll().value) in STRICT_PROSCRIBED
-    if forbidden and @context isnt 'object'
-      throw SyntaxError "variable name may not be \"#{name}\""
 
   children: ['variable', 'value']
 
@@ -631,8 +625,6 @@ exports.Code = class Code extends Base
 # as well as be a splat, gathering up a group of parameters into an array.
 exports.Param = class Param extends Base
   constructor: (@name, @value, @splat) ->
-    if (name = @name.unwrapAll().value) in STRICT_PROSCRIBED
-      throw SyntaxError "parameter name \"#{name}\" is not allowed"
 
   children: ['name', 'value']
 
