@@ -5,6 +5,11 @@ import subprocess
 import optparse
 import tempfile
 
+# term colors
+term_red = "\x1B[0;31m"
+term_green = "\x1B[0;32m"
+term_clear = "\x1B[0m"
+
 def superwalk(folder):
     for dirpath, _dirnames, filenames in os.walk(folder):
         for filename in filenames:
@@ -107,7 +112,7 @@ def main():
     for test_name, test in test_list:
         def add_fail(message, letter, long_message):
             if options.verbose:
-                sys.stdout.write("\x1B[0;31m" + message + "\x1B[0m\n")
+                sys.stdout.write(term_red + message + term_clear + "\n")
             else:
                 sys.stdout.write(letter)
             fails.append({'name': test_name, 'message': long_message})
@@ -169,7 +174,7 @@ Run program exited with returncode %i\
         if len(fails) == fail_count:
             # must have been a pass
             if options.verbose:
-                sys.stdout.write("\x1B[0;32mpass\x1B[0m\n")
+                sys.stdout.write(term_green + "pass" + term_clear + "\n")
             else:
                 sys.stdout.write('.')
             passed += 1
