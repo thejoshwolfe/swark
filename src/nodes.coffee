@@ -5,6 +5,7 @@
 
 {Scope} = require './scope'
 {RESERVED, STRICT_PROSCRIBED} = require './lexer'
+stdlib = require './stdlib'
 
 # Import the helpers we plan to use.
 {compact, flatten, extend, merge, del, starts, ends, last} = require './helpers'
@@ -161,7 +162,8 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compile: () ->
-    "set [0x8ffe], 0\n"
+    stdlib_contents = stdlib.printc
+    "set [0x8ffe], 0\n\n#{stdlib_contents}"
 
   # Wrap up the given nodes as a **Block**, unless it already happens
   # to be one.
