@@ -4,13 +4,11 @@ Inspired by go, coffee-script, and python.
 
 To set up dependencies:
 
-    cd swark
     sudo npm link
 
 To build:
 
     cake build
-    cake build:parser
 
 To run the tests:
 

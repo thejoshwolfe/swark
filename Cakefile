@@ -14,11 +14,6 @@ if enableColors
   green = '\x1B[0;32m'
   reset = '\x1B[0m'
 
-sources = [
-  'swark', 'grammar', 'helpers'
-  'lexer', 'nodes', 'rewriter', 'scope'
-].map (filename) -> "src/#{filename}.coffee"
-
 # Run a source file through coffeescript
 run = (args, cb) ->
   proc =         spawn './node_modules/coffee-script/bin/coffee', args
@@ -51,19 +46,37 @@ task 'install', 'install swark into /usr/local (or --prefix)', (options) ->
     if err then console.log stderr.trim() else log 'done', green
   )
 
+get_mtime = (file) ->
+  try new Date(fs.statSync(file).mtime)
+  catch e
+    new Date(0)
 
-task 'build', 'build the swark language from source', build = (cb) ->
+build = ->
   files = fs.readdirSync 'src'
   files = ('src/' + file for file in files when file.match(/\.coffee$/))
-  run ['-c', '-o', 'lib/swark'].concat(files), cb
+  out_dir = 'lib/swark'
+  is_out_of_date = (file) ->
+    out_file = file.replace /^src\/(.*)\.coffee$/, "#{out_dir}/$1.js"
+    return get_mtime(file) > get_mtime(out_file)
+  files = (file for file in files when is_out_of_date file)
+  if files.length > 0
+    console.log "compiling #{files.length} coffee file#{if files.length == 1 then "" else "s"} to js"
+    run ['-c', '-o', out_dir].concat(files), build_parser
+  else
+    build_parser()
 
-
-task 'build:parser', 'rebuild the Jison parser (run build first)', ->
+build_parser = ->
   for key, val of require('util')
     global[key] = val
+  in_file = 'lib/swark/grammar.js'
+  out_file = 'lib/swark/parser.js'
+  return unless get_mtime(in_file) > get_mtime(out_file)
+  console.log 'building parser'
   require 'jison'
   parser = require('./lib/swark/grammar').parser
-  fs.writeFile 'lib/swark/parser.js', parser.generate()
+  fs.writeFile out_file, parser.generate()
+
+task 'build', 'build everything', build
 
 task 'clean', 'delete auto-generated files', ->
   exec([
