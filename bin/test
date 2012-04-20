@@ -134,7 +134,7 @@ def main():
             if options.verbose:
                 sys.stdout.write(test_name + "...")
                 sys.stdout.flush()
-            compiler = subprocess.Popen([compiler_exe, '-s'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            compiler = subprocess.Popen([compiler_exe, '-p', '-s'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             compiler_stdout, compiler_stderr = compiler.communicate(test['source'])
 
             normal_behavior = compiler.returncode == 0 or \
