@@ -18,7 +18,22 @@ NO      = -> no
 THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
+class Variable
+  constructor: (@name, @type, @namespace, @asm) ->
+  mangledName: ->
+    "_" + @name
+
 class Namespace
+  constructor: ->
+    @names = {}
+    @variables = []
+  find: (name) ->
+    @names[name]
+  createVariable: (name, type, asm) ->
+    variable = new Variable name, type, this, asm
+    @names[name] = variable
+    @variables.push variable
+    variable
 
 #### Base
 
@@ -166,17 +181,16 @@ exports.Block = class Block extends Base
   compileRoot: ->
     o =
       namespace: new Namespace
+    o.namespace.createVariable "printc", "func(int)", stdlib.printc
     code = @compile o
-    stdlib_contents = stdlib.printc
-    return [
-      code
-      "set [0x8ffe], 0\n"
-      stdlib_contents
-    ].join "\n"
+    codes = [code, "set [0x8ffe], 0\n"]
+    for variable in o.namespace.variables
+      codes.push variable.asm
+    codes.join "\n"
   compile: (o) ->
     codes = []
     for expression in @expressions
-      codes.push expression.compile()
+      codes.push expression.compile o
     codes.join "\n"
 
   # Wrap up the given nodes as a **Block**, unless it already happens
@@ -300,13 +314,22 @@ exports.Call = class Call extends Base
   children: ['variable', 'args']
 
   compile: (o) ->
-    throw SyntaxError 'can only call "printc"' unless @variable.base.value == "printc"
-    throw SyntaxError 'function "printc" takes 1 argument' unless @args.length == 1
-    throw SyntaxError 'function arguments must be literal integers' if isNaN parseInt @args[0].base.value
-    mangle = (name) -> name
+    funcName = @variable.unwrapAll().value
+    funcVariable = o.namespace.find funcName
+    throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
+    throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\"" unless funcVariable.type is "func(int)"
+    throw SyntaxError "function \"#{funcName}\" takes 1 argument" unless @args.length == 1
+    arg = @args[0].unwrapAll().value
+    if not isNaN parseInt arg
+      arg_access = arg
+    else if (arg_variable = o.namespace.find arg)?
+      throw SyntaxError "can't pass argument of type #{arg_variable.type} to function \"#{funcName}\"" unless arg_variable.type is "int"
+      arg_access = "[#{arg_variable.mangledName()}]"
+    else
+      throw SyntaxError 'invalid expression'
     return [
-      "set push, #{@args[0].base.value}"
-      "jsr #{mangle @variable.base.value}"
+      "set push, #{arg_access}"
+      "jsr #{funcVariable.mangledName()}"
     ].join("\n")
 
   # Tag this invocation as creating a new instance.
@@ -539,19 +562,6 @@ exports.Class = class Class extends Base
       node instanceof Value and node.isString()
     @directives = expressions.splice 0, index
 
-  # Make sure that a constructor is defined for the class, and properly
-  # configured.
-  ensureConstructor: (name) ->
-    if not @ctor
-      @ctor = new Code
-      @ctor.body.push new Literal "#{name}.__super__.constructor.apply(this, arguments)" if @parent
-      @ctor.body.push new Literal "#{@externalCtor}.apply(this, arguments)" if @externalCtor
-      @ctor.body.makeReturn()
-      @body.expressions.unshift @ctor
-    @ctor.ctor     = @ctor.name = name
-    @ctor.klass    = null
-    @ctor.noReturn = yes
-
 #### Assign
 
 # The **Assign** is used to assign a local variable to value, or to set the
@@ -565,6 +575,19 @@ exports.Assign = class Assign extends Base
       throw SyntaxError "variable name may not be \"#{name}\""
 
   children: ['variable', 'value']
+
+  compile: (o) ->
+    name = @variable.unwrapAll().value
+    value = @value.unwrapAll().value
+    throw SyntaxError 'assignment values must be literal integers' if isNaN parseInt value
+    variable = o.namespace.find name
+    if @context is ":="
+      throw SyntaxError "variable \"#{name}\" is already declared" if variable?.namespace is o.namespace
+      variable = o.namespace.createVariable name, "int"
+      variable.asm = ":#{variable.mangledName()} dat 0"
+    else
+      throw SyntaxError "only := assignments allowed"
+    "set [#{variable.mangledName()}], #{value}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
