@@ -15,13 +15,13 @@ def absolute(relative_path):
 
 def execute_asm_code(asm_code):
     "execute asm_code and return stdout"
-    exe = 'bin/dcpu16exec'
+    exe = 'bin/swark'
 
     # save asm_code to a file
     handle = tempfile.NamedTemporaryFile(suffix=".dasm", delete=False)
     handle.write(asm_code)
     handle.close()
-    process = subprocess.Popen([exe, handle.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([exe, '-a', handle.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     try:
         os.remove(handle.name)
@@ -42,31 +42,38 @@ def main():
         print("Loading test suite...")
 
     tests = {}
+    valid_extensions = ['.swark', '.dasm']
     for f in superwalk("test/"):
         if f.find("/_") != -1:
             continue
-        if f.endswith('.swark.err'):
-            test_name = f[:-len('.swark.err')]
-            ext = '.swark.err'
-        elif f.endswith('.swark'):
-            test_name = f[:-len('.swark')]
-            ext = '.swark'
-        elif f.endswith('.swark.out'):
-            test_name = f[:-len('.swark.out')]
-            ext = '.swark.out'
-        else:
+        ok = False
+        for valid_ext in valid_extensions:
+            if f.endswith(valid_ext):
+                test_name = f
+                ext = valid_ext
+                ok = True
+            elif f.endswith(valid_ext + '.err'):
+                test_name = f[:-4]
+                ext = valid_ext + '.err'
+                ok = True
+            elif f.endswith(valid_ext + '.out'):
+                test_name = f[:-4]
+                ext = valid_ext + '.out'
+                ok = True
+        if not ok:
+            print("Ignoring %s" % f)
             continue
 
         if not tests.has_key(test_name):
             tests[test_name] = {}
 
-        if ext == '.swark.err':
+        if ext.endswith('err'):
             compiler_output = open(absolute(f), 'r').read()
             tests[test_name]['errors'] = compiler_output.replace('Errors detected. Exiting.\n', '')
-        elif ext == '.swark.out':
+        elif ext.endswith('out'):
             expected_output = open(absolute(f), 'r').read()
             tests[test_name]['out'] = expected_output
-        else: # ext == '.swark'
+        else:
             tests[test_name]['source'] = open(absolute(f), 'r').read()
     retain_names = set()
     for arg in args:
@@ -111,13 +118,16 @@ def main():
             if options.verbose:
                 sys.stdout.write(test_name + "...")
                 sys.stdout.flush()
-            compiler = subprocess.Popen([compiler_exe, '-p', '-s'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            compiler_stdout, compiler_stderr = compiler.communicate(test['source'])
+            if test_name.endswith(".dasm"):
+                compiler_stdout = test['source']
+            else:
+                compiler = subprocess.Popen([compiler_exe, '-s', '-p'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                compiler_stdout, compiler_stderr = compiler.communicate(test['source'])
 
-            normal_behavior = compiler.returncode == 0 or \
-                              (compiler.returncode == 1 and compiler_stderr != "")
-            if not normal_behavior:
-                return add_fail("compiler crash", "C", """\
+                normal_behavior = compiler.returncode == 0 or \
+                                  (compiler.returncode == 1 and compiler_stderr != "")
+                if not normal_behavior:
+                    return add_fail("compiler crash", "C", """\
 ---- Compiler stdout: ----
 %s\
 ---- Compiler stderr: ----
@@ -126,8 +136,8 @@ def main():
 The compiler exited with returncode %i\
 """ % (compiler_stdout, compiler_stderr, compiler.returncode))
 
-            if compiler_stderr != test['errors']:
-                return add_fail("wrong compiler stderr", "F", """\
+                if compiler_stderr != test['errors']:
+                    return add_fail("wrong compiler stderr", "F", """\
 ---- Compiler stderr: ----
 %s\
 ---- Expected stderr: ----
