@@ -33,6 +33,7 @@ SWITCHES = [
   ['-o', '--output [FILE]',   'set the output file for compiled DCPU16 code']
   ['-p', '--print',           'print out the compiled DCPU16 assembly']
   ['-s', '--stdio',           'listen for and compile scripts over stdio']
+  ['-a', '--assembly',        'treat input as dcpu16 assembly instead of swark']
   ['-t', '--tokens',          'print out the tokens that the lexer/rewriter produce']
   ['-v', '--version',         'display the version number']
 ]
@@ -68,7 +69,10 @@ compileFile = (path, base) ->
     else
       throw err
 
-  compileScript path, code.toString(), base
+  if opts.assembly
+    require('./dcpu16exec').runAssembly code.toString()
+  else
+    compileScript path, code.toString(), base
 
 
 # Compile a single source script, containing the given code, according to the
@@ -83,7 +87,8 @@ compileScript = (file, input, base) ->
     Swark.emit 'compile', task
     if      o.tokens      then printTokens Swark.tokens t.input
     else if o.nodes       then printLine Swark.nodes(t.input).toString().trim()
-    else if o.run         then Swark.run t.input, t.options
+    else if o.run
+      require('./dcpu16exec').runAssembly Swark.compile(t.input, t.options)
     else
       t.output = Swark.compile t.input, t.options
       Swark.emit 'success', task
