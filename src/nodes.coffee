@@ -476,14 +476,6 @@ exports.Class = class Class extends Base
         node.klass    = name
         node.context  = name if node.bound
 
-  # Ensure that all functions bound to the instance are proxied in the
-  # constructor.
-  addBoundFunctions: (o) ->
-    if @boundFuncs.length
-      for bvar in @boundFuncs
-        lhs = (new Value (new Literal "this"), [new Access bvar]).compile o
-        @ctor.body.unshift new Literal "#{lhs} = #{utility 'bind'}(#{lhs}, this)"
-
   # Merge the properties from a top-level object as prototypal properties
   # on the class.
   addProperties: (node, name, o) ->
@@ -1004,28 +996,6 @@ Closure =
 # Constants
 # ---------
 
-UTILITIES =
-
-  # Correctly set up a prototype chain for inheritance, including a reference
-  # to the superclass for `super()` calls, and copies of any static properties.
-  extends: -> """
-    function(child, parent) { for (var key in parent) { if (#{utility 'hasProp'}.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; }
-  """
-
-  # Create a function bound to the current value of "this".
-  bind: -> '''
-    function(fn, me){ return function(){ return fn.apply(me, arguments); }; }
-  '''
-
-  # Discover if an item is in an array.
-  indexOf: -> """
-    [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; }
-  """
-
-  # Shortcuts to speed up the lookup time for native functions.
-  hasProp: -> '{}.hasOwnProperty'
-  slice  : -> '[].slice'
-
 # Levels indicate a node's position in the AST. Useful for knowing if
 # parens are necessary or superfluous.
 LEVEL_TOP    = 1  # ...;
@@ -1041,34 +1011,7 @@ TAB = '  '
 IDENTIFIER_STR = "[$A-Za-z_\\x7f-\\uffff][$\\w\\x7f-\\uffff]*"
 IDENTIFIER = /// ^ #{IDENTIFIER_STR} $ ///
 SIMPLENUM  = /^[+-]?\d+$/
-METHOD_DEF = ///
-  ^
-    (?:
-      (#{IDENTIFIER_STR})
-      \.prototype
-      (?:
-        \.(#{IDENTIFIER_STR})
-      | \[("(?:[^\\"\r\n]|\\.)*"|'(?:[^\\'\r\n]|\\.)*')\]
-      | \[(0x[\da-fA-F]+ | \d*\.?\d+ (?:[eE][+-]?\d+)?)\]
-      )
-    )
-  |
-    (#{IDENTIFIER_STR})
-  $
-///
 
 # Is a literal value a string?
 IS_STRING = /^['"]/
 
-# Utility Functions
-# -----------------
-
-# Helper for ensuring that utility functions are assigned at the top level.
-utility = (name) ->
-  ref = "__#{name}"
-  Scope.root.assign ref, UTILITIES[name]()
-  ref
-
-multident = (code, tab) ->
-  code = code.replace /\n/g, '$&' + tab
-  code.replace /\s+$/, ''
