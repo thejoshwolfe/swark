@@ -1,0 +1,4 @@
+a := 65
+printc a
+b := 10
+printc b
