@@ -1,0 +1,11 @@
+    set push, 65
+    jsr printc
+    set push, 10
+    jsr printc
+    set [0x8ffe], 0
+
+:printc
+    set z, pop
+    set [0x8fff], pop
+    set pc, z
+
