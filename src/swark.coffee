@@ -8,14 +8,6 @@ path             = require 'path'
 {parser}         = require './parser'
 vm               = require 'vm'
 
-# TODO: Remove registerExtension when fully deprecated.
-if require.extensions
-  require.extensions['.swark'] = (module, filename) ->
-    content = compile fs.readFileSync(filename, 'utf8'), {filename}
-    module._compile content, filename
-else if require.registerExtension
-  require.registerExtension '.swark', (content) -> compile content
-
 # The current version number.
 exports.VERSION = '0.0.0'
 
