@@ -26,7 +26,6 @@ BANNER = '''
 
 # The list of all the valid option flags that `swark` knows how to handle.
 SWITCHES = [
-  ['-b', '--bare',            'compile without a top-level function wrapper']
   ['-e', '--eval',            'pass a string from the command line as input']
   ['-h', '--help',            'display this help message']
   ['-i', '--interactive',     'run an interactive REPL']
@@ -77,7 +76,8 @@ compileFile = (path, base) ->
 # `__dirname` and `module.filename` to be correct relative to the script's path.
 compileScript = (file, input, base) ->
   o = opts
-  options = compileOptions file
+  options = {filename: file}
+
   try
     t = task = {file, input, options}
     Swark.emit 'compile', task
@@ -125,10 +125,6 @@ parseOptions = ->
     process.exit 1
   source        = o.arguments[0]
   return
-
-# The compile-time options to pass to the compiler.
-compileOptions = (filename) ->
-  {filename, bare: opts.bare, header: opts.compile}
 
 # Print the `--help` usage message and exit. Deprecated switches are not
 # shown.
