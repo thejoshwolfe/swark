@@ -18,6 +18,8 @@ NO      = -> no
 THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
+class Namespace
+
 #### Base
 
 # The **Base** is the abstract base class for all nodes in the syntax tree.
@@ -162,14 +164,16 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
-    code = @compile()
+    o =
+      namespace: new Namespace
+    code = @compile o
     stdlib_contents = stdlib.printc
     return [
       code
       "set [0x8ffe], 0\n"
       stdlib_contents
     ].join "\n"
-  compile: ->
+  compile: (o) ->
     codes = []
     for expression in @expressions
       codes.push expression.compile()
@@ -295,7 +299,7 @@ exports.Call = class Call extends Base
 
   children: ['variable', 'args']
 
-  compile: ->
+  compile: (o) ->
     throw SyntaxError 'can only call "printc"' unless @variable.base.value == "printc"
     throw SyntaxError 'function "printc" takes 1 argument' unless @args.length == 1
     throw SyntaxError 'function arguments must be literal integers' if isNaN parseInt @args[0].base.value
@@ -313,21 +317,6 @@ exports.Call = class Call extends Base
     else
       @isNew = true
     this
-
-  # Grab the reference to the superclass's implementation of the current
-  # method.
-  superReference: (o) ->
-    {method} = o.scope
-    throw SyntaxError 'cannot call super outside of a function.' unless method
-    {name} = method
-    throw SyntaxError 'cannot call super on an anonymous function.' unless name?
-    if method.klass
-      accesses = [new Access(new Literal '__super__')]
-      accesses.push new Access new Literal 'constructor' if method.static
-      accesses.push new Access new Literal name
-      (new Value (new Literal method.klass), accesses).compile o
-    else
-      "#{name}.__super__.constructor"
 
   # Walk through the objects in the arguments, moving over simple values.
   # This allows syntax like `call a: b, c` into `call({a: b}, c);`

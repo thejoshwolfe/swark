@@ -336,9 +336,10 @@ exports.Lexer = class Lexer
       value = @chunk.charAt 0
     tag  = value
     prev = last @tokens
-    if value is '=' and prev
+    if value in ASSIGN and prev
       if not prev[1].reserved and prev[1] in JS_FORBIDDEN
         @error "reserved word \"#{@value()}\" can't be assigned"
+    if value is '=' and prev
       if prev[1] in ['||', '&&']
         prev[0] = 'COMPOUND_ASSIGN'
         prev[1] += '='
@@ -348,6 +349,7 @@ exports.Lexer = class Lexer
       tag = 'TERMINATOR'
     else if value in MATH            then tag = 'MATH'
     else if value in COMPARE         then tag = 'COMPARE'
+    else if value in ASSIGN          then tag = 'ASSIGN'
     else if value in COMPOUND_ASSIGN then tag = 'COMPOUND_ASSIGN'
     else if value in UNARY           then tag = 'UNARY'
     else if value in SHIFT           then tag = 'SHIFT'
@@ -636,6 +638,8 @@ TRAILING_SPACES = /\s+$/
 COMPOUND_ASSIGN = [
   '-=', '+=', '/=', '*=', '%=', '||=', '&&=', '?=', '<<=', '>>=', '>>>=', '&=', '^=', '|='
 ]
+
+ASSIGN = ['=', ':=']
 
 # Unary tokens.
 UNARY   = ['!', '~', 'NEW', 'TYPEOF', 'DELETE', 'DO']
