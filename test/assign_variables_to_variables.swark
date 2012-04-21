@@ -1,0 +1,7 @@
+a := 65
+b := "B"
+c := a
+d := b
+printc c
+prints d
+printc 10
