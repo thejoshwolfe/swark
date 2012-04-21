@@ -517,6 +517,7 @@ RESERVED = [
   'of'
   'by'
   'when'
+  'func'
 ]
 
 exports.RESERVED = RESERVED

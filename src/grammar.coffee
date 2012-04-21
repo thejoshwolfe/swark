@@ -150,15 +150,7 @@ grammar =
   # of **Block** preceded by a function arrow, with an optional parameter
   # list.
   Code: [
-    o 'PARAM_START ParamList PARAM_END FuncGlyph Block', -> new Code $2, $5, $4
-    o 'FuncGlyph Block',                        -> new Code [], $2, $1
-  ]
-
-  # two different symbols for functions. `->` is for ordinary
-  # functions, and `=>` is for functions bound to the current value of *this*.
-  FuncGlyph: [
-    o '->',                                     -> 'func'
-    o '=>',                                     -> 'boundfunc'
+    o 'FUNC PARAM_START ParamList PARAM_END -> Block', -> new Code $3, $6
   ]
 
   # An optional, trailing comma.
