@@ -25,7 +25,7 @@ THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
 class Variable
-  constructor: (@name, @type, @namespace, @asm) ->
+  constructor: (@name, @type, @namespace) ->
   mangledName: ->
     "_" + @name
 
@@ -33,13 +33,20 @@ class Namespace
   constructor: ->
     @names = {}
     @variables = []
+    labelCount = 0
+    @nextLabel = -> "_#{labelCount++}"
   find: (name) ->
     @names[name]
-  createVariable: (name, type, asm) ->
-    variable = new Variable name, type, this, asm
+  createVariable: (name, type) ->
+    variable = new Variable name, type, this
     @names[name] = variable
     @variables.push variable
     variable
+  createLiteralString: (value) ->
+    label = @nextLabel()
+    asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
+    @variables.push {asm}
+    label
 
 #### Base
 
@@ -187,8 +194,8 @@ exports.Block = class Block extends Base
   compileRoot: ->
     o =
       namespace: new Namespace
-    o.namespace.createVariable "printc", "func(int)", stdlib.printc
-    o.namespace.createVariable "prints", "func(string)", stdlib.prints
+    o.namespace.createVariable("printc", "func(int)").asm = stdlib.printc
+    o.namespace.createVariable("prints", "func(string)").asm = stdlib.prints
     code = @compile o
     codes = [code, "set [0x8ffe], 0\n"]
     for variable in o.namespace.variables
@@ -320,26 +327,29 @@ exports.Call = class Call extends Base
     funcName = @variable.unwrapAll().value
     funcVariable = o.namespace.find funcName
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
+    if funcVariable.type not in ["func(int)", "func(string)"]
+      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\""
     throw SyntaxError "function \"#{funcName}\" takes 1 argument" unless @args.length == 1
+    required_arg_type = funcVariable.type.match(/\((.*)\)/)[1]
     arg = @args[0].unwrapAll()
     throw SyntaxError "invalid expression" unless arg instanceof Literal
-    if funcVariable.type is "func(int)"
-      if arg.isAssignable()
-        if (arg_variable = o.namespace.find arg.value)?
-          throw SyntaxError "can't pass argument of type #{arg_variable.type} to function \"#{funcName}\"" unless arg_variable.type is "int"
-          arg_access = "[#{arg_variable.mangledName()}]"
-        else
-          throw SyntaxError "unknown identifier: #{arg.value}"
-      else
-        arg_access = arg.value
-      return [
-        "set push, #{arg_access}"
-        "jsr #{funcVariable.mangledName()}"
-      ].join("\n")
-    else if funcVariable.type is "func(string)"
-      true
+    if arg.isAssignable()
+      arg_variable = o.namespace.find arg.value
+      throw SyntaxError "undefined variable: #{arg.value}" unless arg_variable?
+      arg_type = arg_variable.type
+      arg_access = "[#{arg_variable.mangledName()}]"
     else
-      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\""
+      if arg.value.match /^['"]/
+        arg_type = "string"
+        arg_access = o.namespace.createLiteralString JSON.parse arg.value
+      else
+        arg_type = "int"
+        arg_access = arg.value
+    throw SyntaxError "can't pass argument of type #{arg_type} to function \"#{funcName}\"" unless arg_type is required_arg_type
+    return [
+      "set push, #{arg_access}"
+      "jsr #{funcVariable.mangledName()}"
+    ].join("\n")
 
   # Tag this invocation as creating a new instance.
   newInstance: ->
