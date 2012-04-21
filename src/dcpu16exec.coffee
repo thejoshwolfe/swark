@@ -1,5 +1,4 @@
 dcpu16 = require("dcpu16")
-fs = require("fs")
 
 exports.runAssembly = (asm_code) ->
   cpu = new dcpu16.CPU()
