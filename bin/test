@@ -49,7 +49,7 @@ def main():
     tests = {}
     valid_extensions = ['.swark', '.dasm']
     for f in superwalk("test/"):
-        if f.find("/_") != -1:
+        if f.find("/_") != -1 or f.endswith(".swp"):
             continue
         ok = False
         for valid_ext in valid_extensions:
