@@ -1,0 +1,7 @@
+a := 66
+f := func() ->
+  a := 65
+  printc a
+f()
+printc a
+printc 10
