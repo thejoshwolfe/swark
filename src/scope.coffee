@@ -6,7 +6,7 @@
 # with the outside.
 
 # Import the helpers we plan to use.
-{extend, last} = require './helpers'
+{last} = require './helpers'
 
 exports.Scope = class Scope
 

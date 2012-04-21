@@ -6,10 +6,17 @@
 {Scope} = require './scope'
 stdlib = require './stdlib'
 
-# Import the helpers we plan to use.
-{compact, flatten, extend, merge, del, starts, ends, last} = require './helpers'
+# Return a flattened version of an array.
+# Handy for getting a list of `children` from the nodes.
+flatten = (array) ->
+  flattened = []
+  for element in array
+    if element instanceof Array
+      flattened = flattened.concat flatten element
+    else
+      flattened.push element
+  flattened
 
-exports.extend = extend  # for parser
 
 # Constant functions for nodes that don't need customization.
 YES     = -> yes
@@ -128,7 +135,7 @@ exports.Base = class Base
 # `if`, `switch`, or `try`, and so on...
 exports.Block = class Block extends Base
   constructor: (nodes) ->
-    @expressions = compact flatten nodes or []
+    @expressions = (item for item in (flatten nodes or []) when item)
 
   children: ['expressions']
 
@@ -281,9 +288,6 @@ exports.Value = class Value extends Base
   isObject: (onlyGenerated) ->
     return no if @properties.length
     (@base instanceof Obj) and (not onlyGenerated or @base.generated)
-
-  isSplice: ->
-    last(@properties) instanceof Slice
 
   # The value can be unwrapped as its inner node, if there are no attached
   # properties.
@@ -537,7 +541,7 @@ exports.Class = class Class extends Base
               @boundFuncs.push base
               func.bound = no
       assign
-    compact exprs
+    (item for item in exprs when item)
 
   # Walk the body of the class, looking for prototype properties to be converted.
   walkBody: (name, o) ->

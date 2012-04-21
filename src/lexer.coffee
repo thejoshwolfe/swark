@@ -9,8 +9,15 @@
 
 {Rewriter, INVERSES} = require './rewriter'
 
-# Import the helpers we need.
-{count, starts, compact, last} = require './helpers'
+# Gets the last item of an array(-like) object.
+last = (array, back) -> array[array.length - (back or 0) - 1]
+
+# Count the number of occurrences of a string in a string.
+count = (string, substr) ->
+  num = pos = 0
+  return 1/0 unless substr.length
+  num++ while pos = 1 + string.indexOf substr, pos
+  num
 
 # The Lexer Class
 # ---------------
@@ -88,7 +95,7 @@ exports.Lexer = class Lexer
       @token 'OWN', id
       return id.length
     forcedIdentifier = colon or
-      (prev = last @tokens) and (prev[0] in ['.', '?.', '::'] or
+      (prev = last @tokens) and (prev[0] in ['.', '::'] or
       not prev.spaced and prev[0] is '@')
     tag = 'IDENTIFIER'
 
@@ -355,15 +362,12 @@ exports.Lexer = class Lexer
     else if value in COMPOUND_ASSIGN then tag = 'COMPOUND_ASSIGN'
     else if value in UNARY           then tag = 'UNARY'
     else if value in SHIFT           then tag = 'SHIFT'
-    else if value in LOGIC or value is '?' and prev?.spaced then tag = 'LOGIC'
+    else if value in LOGIC           then tag = 'LOGIC'
     else if prev and not prev.spaced
       if value is '(' and prev[0] in CALLABLE
-        prev[0] = 'FUNC_EXIST' if prev[0] is '?'
         tag = 'CALL_START'
       else if value is '[' and prev[0] in INDEXABLE
         tag = 'INDEX_START'
-        switch prev[0]
-          when '?'  then prev[0] = 'INDEX_SOAK'
     switch value
       when '(', '{', '[' then @ends.push INVERSES[value]
       when ')', '}', ']' then @pair value
@@ -526,7 +530,7 @@ exports.Lexer = class Lexer
   # Are we in the midst of an unfinished expression?
   unfinished: ->
     LINE_CONTINUER.test(@chunk) or
-    @tag() in ['\\', '.', '?.', 'UNARY', 'MATH', '+', '-', 'SHIFT', 'RELATION'
+    @tag() in ['\\', '.', 'UNARY', 'MATH', '+', '-', 'SHIFT', 'RELATION'
                'COMPARE', 'LOGIC', 'THROW', 'EXTENDS']
 
   # Converts newlines for string literals.
@@ -682,7 +686,7 @@ NOT_SPACED_REGEX = NOT_REGEX.concat ')', '}', 'THIS', 'IDENTIFIER', 'STRING'
 # Tokens which could legitimately be invoked or indexed. An opening
 # parentheses or bracket following these tokens will be recorded as the start
 # of a function invocation or indexing operation.
-CALLABLE  = ['IDENTIFIER', 'STRING', 'REGEX', ')', ']', '}', '?', '::', '@', 'THIS', 'SUPER']
+CALLABLE  = ['IDENTIFIER', 'STRING', 'REGEX', ')', ']', '}', '::', '@', 'THIS', 'SUPER']
 INDEXABLE = CALLABLE.concat 'NUMBER', 'BOOL'
 
 # Tokens that, when immediately preceding a `WHEN`, indicate that the `WHEN`

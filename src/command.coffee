@@ -9,10 +9,6 @@ helpers        = require './helpers'
 optparse       = require './optparse'
 Swark          = require './swark'
 {spawn, exec}  = require 'child_process'
-{EventEmitter} = require 'events'
-
-# Allow emitting Node.js events.
-helpers.extend Swark, new EventEmitter
 
 printLine = (line) -> process.stdout.write line + '\n'
 printWarn = (line) -> process.stderr.write line + '\n'
@@ -84,19 +80,15 @@ compileScript = (file, input, base) ->
 
   try
     t = task = {file, input, options}
-    Swark.emit 'compile', task
     if      o.tokens      then printTokens Swark.tokens t.input
     else if o.nodes       then printLine Swark.nodes(t.input).toString().trim()
     else if o.run
       require('./dcpu16exec').runAssembly Swark.compile(t.input, t.options)
     else
       t.output = Swark.compile t.input, t.options
-      Swark.emit 'success', task
       if o.print          then printLine t.output.trim()
       if o.output         then fs.writeFileSync o.output, t.output, "utf8"
   catch err
-    Swark.emit 'failure', err, task
-    return if Swark.listeners('failure').length
     printWarn err instanceof Error and err.stack or "ERROR: #{err}"
     process.exit 1
 

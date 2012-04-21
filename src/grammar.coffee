@@ -35,7 +35,7 @@ o = (patternString, action, options) ->
   return [patternString, '$$ = $1;', options] unless action
   action = if match = unwrap.exec action then match[1] else "(#{action}())"
   action = action.replace /\bnew /g, '$&yy.'
-  action = action.replace /\b(?:Block\.wrap|extend)\b/g, 'yy.$&'
+  action = action.replace /\b(?:Block\.wrap)\b/g, 'yy.$&'
   [patternString, "$$ = #{action};", options]
 
 # Grammatical Rules
@@ -245,7 +245,6 @@ grammar =
   # or by array index or slice.
   Accessor: [
     o '.  Identifier',                          -> new Access $2
-    o '?. Identifier',                          -> new Access $2, 'soak'
     o ':: Identifier',                          -> [(new Access new Literal 'prototype'), new Access $2]
     o '::',                                     -> new Access new Literal 'prototype'
     o 'Index'
@@ -254,7 +253,6 @@ grammar =
   # Indexing into an object or array using bracket notation.
   Index: [
     o 'INDEX_START IndexValue INDEX_END',       -> $2
-    o 'INDEX_SOAK  Index',                      -> extend $2, soak : yes
   ]
 
   IndexValue: [
