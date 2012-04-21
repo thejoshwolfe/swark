@@ -5,7 +5,6 @@
 # External dependencies.
 fs             = require 'fs'
 path           = require 'path'
-helpers        = require './helpers'
 optparse       = require './optparse'
 Swark          = require './swark'
 {spawn, exec}  = require 'child_process'

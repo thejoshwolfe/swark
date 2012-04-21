@@ -5,9 +5,6 @@
 # variables are new and need to be declared with `var`, and which are shared
 # with the outside.
 
-# Import the helpers we plan to use.
-{last} = require './helpers'
-
 exports.Scope = class Scope
 
   # The top-level **Scope** object.

@@ -14,9 +14,6 @@ exports.VERSION = '0.0.0'
 # Words that cannot be used as identifiers
 exports.RESERVED = RESERVED
 
-# Expose helpers for testing.
-exports.helpers = require './helpers'
-
 # Compile a string of code 
 exports.compile = compile = (code, options = {}) ->
   try
