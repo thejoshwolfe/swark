@@ -1,0 +1,4 @@
+lala := "hi"
+foo := 32
+lala := "derp"
+prints lala
