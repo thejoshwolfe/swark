@@ -64,8 +64,6 @@ exports.Lexer = class Lexer
            @heredocToken()    or
            @stringToken()     or
            @numberToken()     or
-           @regexToken()      or
-           @jsToken()         or
            @literalToken()
 
     @closeIndentation()
@@ -201,57 +199,6 @@ exports.Lexer = class Lexer
         herecomment: true, indent: Array(@indent + 1).join(' ')
     @line += count comment, '\n'
     comment.length
-
-  # Matches JavaScript interpolated directly into the source via backticks.
-  jsToken: ->
-    return 0 unless @chunk.charAt(0) is '`' and match = JSTOKEN.exec @chunk
-    @token 'JS', (script = match[0])[1...-1]
-    script.length
-
-  # Matches regular expression literals. Lexing regular expressions is difficult
-  # to distinguish from division, so we borrow some basic heuristics from
-  # JavaScript and Ruby.
-  regexToken: ->
-    return 0 if @chunk.charAt(0) isnt '/'
-    if match = HEREGEX.exec @chunk
-      length = @heregexToken match
-      @line += count match[0], '\n'
-      return length
-
-    prev = last @tokens
-    return 0 if prev and (prev[0] in (if prev.spaced then NOT_REGEX else NOT_SPACED_REGEX))
-    return 0 unless match = REGEX.exec @chunk
-    [match, regex, flags] = match
-    if regex[..1] is '/*' then @error 'regular expressions cannot begin with `*`'
-    if regex is '//' then regex = '/(?:)/'
-    @token 'REGEX', "#{regex}#{flags}"
-    match.length
-
-  # Matches multiline extended regular expressions.
-  heregexToken: (match) ->
-    [heregex, body, flags] = match
-    if 0 > body.indexOf '#{'
-      re = body.replace(HEREGEX_OMIT, '').replace(/\//g, '\\/')
-      if re.match /^\*/ then @error 'regular expressions cannot begin with `*`'
-      @token 'REGEX', "/#{ re or '(?:)' }/#{flags}"
-      return heregex.length
-    @token 'IDENTIFIER', 'RegExp'
-    @tokens.push ['CALL_START', '(']
-    tokens = []
-    for [tag, value] in @interpolateString(body, regex: yes)
-      if tag is 'TOKENS'
-        tokens.push value...
-      else
-        continue unless value = value.replace HEREGEX_OMIT, ''
-        value = value.replace /\\/g, '\\\\'
-        tokens.push ['STRING', @makeString(value, '"', yes)]
-      tokens.push ['+', '+']
-    tokens.pop()
-    @tokens.push ['STRING', '""'], ['+', '+'] unless tokens[0]?[0] is 'STRING'
-    @tokens.push tokens...
-    @tokens.push [',', ','], ['STRING', '"' + flags + '"'] if flags
-    @token ')', ')'
-    heregex.length
 
   # Matches newlines, indents, and outdents, and determines which is which.
   # If we can detect that the current line is continued onto the the next line,
@@ -441,8 +388,6 @@ exports.Lexer = class Lexer
           continue
       if end is '}' and letter in ['"', "'"]
         stack.push end = letter
-      else if end is '}' and letter is '/' and match = (HEREGEX.exec(str[i..]) or REGEX.exec(str[i..]))
-        continueCount += match[0].length - 1
       else if end is '}' and letter is '{'
         stack.push end = '}'
       else if end is '"' and prev is '#' and letter is '{'
@@ -586,7 +531,7 @@ NUMBER     = ///
   ^ 0b[01]+    |              # binary
   ^ 0o[0-7]+   |              # octal
   ^ 0x[\da-f]+ |              # hex
-  ^ \d*\.?\d+ (?:e[+-]?\d+)?  # decimal
+  ^ \d+                       # decimal
 ///i
 
 HEREDOC    = /// ^ ("""|''') ([\s\S]*?) (?:\n[^\n\S]*)? \1 ///
@@ -610,27 +555,6 @@ CODE       = /^[-=]>/
 MULTI_DENT = /^(?:\n\ *)+/
 
 SIMPLESTR  = /^'[^\\']*(?:\\.[^\\']*)*'/
-
-JSTOKEN    = /^`[^\\`]*(?:\\.[^\\`]*)*`/
-
-# Regex-matching-regexes.
-REGEX = /// ^
-  (/ (?! [\s=] )   # disallow leading whitespace or equals signs
-  [^ [ / \n \\ ]*  # every other thing
-  (?:
-    (?: \\[\s\S]   # anything escaped
-      | \[         # character class
-           [^ \] \n \\ ]*
-           (?: \\[\s\S] [^ \] \n \\ ]* )*
-         ]
-    ) [^ [ / \n \\ ]*
-  )*
-  /) ([imgy]{0,4}) (?!\w)
-///
-
-HEREGEX      = /// ^ /{3} ([\s\S]+?) /{3} ([imgy]{0,4}) (?!\w) ///
-
-HEREGEX_OMIT = /\s+(?:#.*)?/g
 
 # Token cleaning regexes.
 MULTILINER      = /\n/g
@@ -669,7 +593,7 @@ MATH    = ['*', '/', '%']
 RELATION = ['IN', 'OF', 'INSTANCEOF']
 
 # Boolean tokens.
-BOOL = ['TRUE', 'FALSE', 'NULL', 'UNDEFINED']
+BOOL = ['TRUE', 'FALSE']
 
 # Tokens which a regular expression will never immediately follow, but which
 # a division operator might.
@@ -677,7 +601,7 @@ BOOL = ['TRUE', 'FALSE', 'NULL', 'UNDEFINED']
 # See: http://www.mozilla.org/js/language/js20-2002-04/rationale/syntax.html#regular-expressions
 #
 # Our list is shorter, due to sans-parentheses method calls.
-NOT_REGEX = ['NUMBER', 'REGEX', 'BOOL', '++', '--', ']']
+NOT_REGEX = ['NUMBER', 'BOOL', '++', '--', ']']
 
 # If the previous token is not spaced, there are more preceding tokens that
 # force a division parse:
@@ -686,7 +610,7 @@ NOT_SPACED_REGEX = NOT_REGEX.concat ')', '}', 'IDENTIFIER', 'STRING'
 # Tokens which could legitimately be invoked or indexed. An opening
 # parentheses or bracket following these tokens will be recorded as the start
 # of a function invocation or indexing operation.
-CALLABLE  = ['IDENTIFIER', 'STRING', 'REGEX', ')', ']', '}', '::']
+CALLABLE  = ['IDENTIFIER', 'STRING', ')', ']', '}', '::']
 INDEXABLE = CALLABLE.concat 'NUMBER', 'BOOL'
 
 # Tokens that, when immediately preceding a `WHEN`, indicate that the `WHEN`

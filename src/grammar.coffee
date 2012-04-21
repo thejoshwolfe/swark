@@ -113,15 +113,9 @@ grammar =
   # All of our immediate values. Generally these can be passed straight
   # through and printed to JavaScript.
   Literal: [
-    o 'NUMBER',                                 -> new Literal $1
-    o 'STRING',                                 -> new Literal $1
-    o 'JS',                                     -> new Literal $1
-    o 'REGEX',                                  -> new Literal $1
-    o 'DEBUGGER',                               -> new Literal $1
-    o 'BOOL',                                   ->
-      val = new Literal $1
-      val.isUndefined = yes if $1 is 'undefined'
-      val
+    o 'NUMBER',                                 -> new Literal $1, "int"
+    o 'STRING',                                 -> new Literal $1, "string"
+    o 'BOOL',                                   -> new Literal $1, "int"
   ]
 
   # Assignment of a variable, property, or index to a value.

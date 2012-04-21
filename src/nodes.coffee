@@ -219,7 +219,12 @@ exports.Block = class Block extends Base
 # JavaScript without translation, such as: strings, numbers,
 # `true`, `false`, `null`...
 exports.Literal = class Literal extends Base
-  constructor: (@value) ->
+  constructor: (value, @type) ->
+    # translate bools to ints
+    @value = switch value
+      when "true" then "1"
+      when "false" then "0"
+      else value
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -339,11 +344,10 @@ exports.Call = class Call extends Base
       arg_type = arg_variable.type
       arg_access = "[#{arg_variable.mangledName()}]"
     else
-      if arg.value.match /^['"]/
-        arg_type = "string"
+      arg_type = arg.type
+      if arg_type is "string"
         arg_access = o.namespace.createLiteralString JSON.parse arg.value
-      else
-        arg_type = "int"
+      if arg_type is "int"
         arg_access = arg.value
     throw SyntaxError "can't pass argument of type #{arg_type} to function \"#{funcName}\"" unless arg_type is required_arg_type
     return [
@@ -508,16 +512,26 @@ exports.Assign = class Assign extends Base
 
   compile: (o) ->
     name = @variable.unwrapAll().value
-    value = @value.unwrapAll().value
-    throw SyntaxError 'assignment values must be literal integers' if isNaN parseInt value
+    value = @value.unwrapAll()
+    throw SyntaxError 'invalid assignment value' unless value instanceof Literal
+    value_type = value.type
+    unless value_type?
+      value_variable = o.namespace.find value.value
+      throw SyntaxError "undefined variable \"#{value.value}\"" unless value_variableable?
+      # just kidding. this doesn't work yet.
+      throw SyntaxError "can't assign from variables"
+    if value_type is "int"
+      value_access = value.value
+    else if value_type is "string"
+      value_access = o.namespace.createLiteralString JSON.parse value.value
     variable = o.namespace.find name
     if @context is ":="
-      throw SyntaxError "variable \"#{name}\" is already declared" if variable?.namespace is o.namespace
-      variable = o.namespace.createVariable name, "int"
+      throw SyntaxError "variable \"#{name}\" is already declared" if variable?
+      variable = o.namespace.createVariable name, value_type
       variable.asm = ":#{variable.mangledName()} dat 0"
     else
       throw SyntaxError "only := assignments allowed"
-    "set [#{variable.mangledName()}], #{value}"
+    "set [#{variable.mangledName()}], #{value_access}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
