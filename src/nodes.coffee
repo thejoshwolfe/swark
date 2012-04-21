@@ -226,6 +226,15 @@ exports.Literal = class Literal extends Base
       when "false" then "0"
       else value
 
+  compile: (o) ->
+    unless @type?
+      variable = o.namespace.find @value
+      throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
+      return {type: variable.type, access: "[#{variable.mangledName()}]"}
+    switch @type
+      when "int" then {type: @type, access: @value}
+      when "string" then {type: @type, access: o.namespace.createLiteralString JSON.parse @value}
+
   makeReturn: ->
     if @isStatement() then this else super
 
@@ -336,22 +345,10 @@ exports.Call = class Call extends Base
       throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\""
     throw SyntaxError "function \"#{funcName}\" takes 1 argument" unless @args.length == 1
     required_arg_type = funcVariable.type.match(/\((.*)\)/)[1]
-    arg = @args[0].unwrapAll()
-    throw SyntaxError "invalid expression" unless arg instanceof Literal
-    if arg.isAssignable()
-      arg_variable = o.namespace.find arg.value
-      throw SyntaxError "undefined variable: #{arg.value}" unless arg_variable?
-      arg_type = arg_variable.type
-      arg_access = "[#{arg_variable.mangledName()}]"
-    else
-      arg_type = arg.type
-      if arg_type is "string"
-        arg_access = o.namespace.createLiteralString JSON.parse arg.value
-      if arg_type is "int"
-        arg_access = arg.value
-    throw SyntaxError "can't pass argument of type #{arg_type} to function \"#{funcName}\"" unless arg_type is required_arg_type
+    arg = @args[0].unwrapAll().compile o
+    throw SyntaxError "can't pass argument of type #{arg.type} to function \"#{funcName}\"" unless arg.type is required_arg_type
     return [
-      "set push, #{arg_access}"
+      "set push, #{arg.access}"
       "jsr #{funcVariable.mangledName()}"
     ].join("\n")
 
@@ -512,26 +509,15 @@ exports.Assign = class Assign extends Base
 
   compile: (o) ->
     name = @variable.unwrapAll().value
-    value = @value.unwrapAll()
-    throw SyntaxError 'invalid assignment value' unless value instanceof Literal
-    value_type = value.type
-    unless value_type?
-      value_variable = o.namespace.find value.value
-      throw SyntaxError "undefined variable \"#{value.value}\"" unless value_variableable?
-      # just kidding. this doesn't work yet.
-      throw SyntaxError "can't assign from variables"
-    if value_type is "int"
-      value_access = value.value
-    else if value_type is "string"
-      value_access = o.namespace.createLiteralString JSON.parse value.value
+    value = @value.unwrapAll().compile o
     variable = o.namespace.find name
     if @context is ":="
       throw SyntaxError "variable \"#{name}\" is already declared" if variable?
-      variable = o.namespace.createVariable name, value_type
+      variable = o.namespace.createVariable name, value.type
       variable.asm = ":#{variable.mangledName()} dat 0"
     else
       throw SyntaxError "only := assignments allowed"
-    "set [#{variable.mangledName()}], #{value_access}"
+    "set [#{variable.mangledName()}], #{value.access}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
