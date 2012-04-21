@@ -1,0 +1,4 @@
+f := func(a int) ->
+  printc a
+f 65
+f 10
