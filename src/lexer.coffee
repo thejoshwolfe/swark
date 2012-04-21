@@ -531,7 +531,7 @@ exports.Lexer = class Lexer
   unfinished: ->
     LINE_CONTINUER.test(@chunk) or
     @tag() in ['\\', '.', 'UNARY', 'MATH', '+', '-', 'SHIFT', 'RELATION'
-               'COMPARE', 'LOGIC', 'THROW', 'EXTENDS']
+               'COMPARE', 'LOGIC', 'EXTENDS']
 
   # Converts newlines for string literals.
   escapeLines: (str, heredoc) ->
@@ -681,12 +681,12 @@ NOT_REGEX = ['NUMBER', 'REGEX', 'BOOL', '++', '--', ']']
 
 # If the previous token is not spaced, there are more preceding tokens that
 # force a division parse:
-NOT_SPACED_REGEX = NOT_REGEX.concat ')', '}', 'THIS', 'IDENTIFIER', 'STRING'
+NOT_SPACED_REGEX = NOT_REGEX.concat ')', '}', 'IDENTIFIER', 'STRING'
 
 # Tokens which could legitimately be invoked or indexed. An opening
 # parentheses or bracket following these tokens will be recorded as the start
 # of a function invocation or indexing operation.
-CALLABLE  = ['IDENTIFIER', 'STRING', 'REGEX', ')', ']', '}', '::', '@', 'THIS', 'SUPER']
+CALLABLE  = ['IDENTIFIER', 'STRING', 'REGEX', ')', ']', '}', '::']
 INDEXABLE = CALLABLE.concat 'NUMBER', 'BOOL'
 
 # Tokens that, when immediately preceding a `WHEN`, indicate that the `WHEN`

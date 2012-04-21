@@ -1,12 +1,14 @@
+set push, str
+jsr _prints
+set push, str2
+jsr _prints
+set [0x8ffe], 0
 
-exports.printc = '''
-:_printc
-    set z, pop
-    set [0x8fff], pop
-    set pc, z
-'''
+:str
+    dat 22, "I love cheeseeeseses.", 10
+:str2
+    dat 6, "12345", 10
 
-exports.prints = '''
 :_prints
     set z, pop
     set a, pop        ; pointer to string object
@@ -20,4 +22,3 @@ exports.prints = '''
         set [0x8fff], [a]     ; print character
         add a, 1
         set pc, _prints_loop
-'''

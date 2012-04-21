@@ -153,8 +153,8 @@ class exports.Rewriter
     condition = (token, i) ->
       [tag] = token
       return yes if not seenSingle and token.fromThen
-      seenSingle  = yes if tag in ['IF', 'ELSE', 'CATCH', '->', '=>', 'CLASS']
-      seenControl = yes if tag in ['IF', 'ELSE', 'SWITCH', 'TRY', '=']
+      seenSingle  = yes if tag in ['IF', 'ELSE', '->', '=>']
+      seenControl = yes if tag in ['IF', 'ELSE', 'SWITCH', '=']
       return yes if tag in ['.', '?.', '::'] and @tag(i - 1) is 'OUTDENT'
       not token.generated and @tag(i - 1) isnt ',' and (tag in IMPLICIT_END or
         (tag is 'INDENT' and not seenControl)) and
@@ -182,7 +182,6 @@ class exports.Rewriter
         (tag in IMPLICIT_CALL or not (token.spaced or token.newLine) and tag in IMPLICIT_UNSPACED_CALL)
       tokens.splice i, 0, @generate 'CALL_START', '(', token[2]
       @detectEnd i + 1, condition, action
-      prev[0] = 'FUNC_EXIST' if prev[0] is '?'
       2
 
   # Because our grammar is LALR(1), it can't handle some single-line
@@ -208,9 +207,6 @@ class exports.Rewriter
       if tag is 'ELSE' and @tag(i - 1) isnt 'OUTDENT'
         tokens.splice i, 0, @indentation(token)...
         return 2
-      if tag is 'CATCH' and @tag(i + 2) in ['OUTDENT', 'TERMINATOR', 'FINALLY']
-        tokens.splice i + 2, 0, @indentation(token)...
-        return 4
       if tag in SINGLE_LINERS and @tag(i + 1) isnt 'INDENT' and
          not (tag is 'ELSE' and @tag(i + 1) is 'IF')
         starter = tag
@@ -284,16 +280,16 @@ for [left, rite] in BALANCED_PAIRS
   EXPRESSION_END  .push INVERSES[left] = rite
 
 # Tokens that indicate the close of a clause of an expression.
-EXPRESSION_CLOSE = ['CATCH', 'WHEN', 'ELSE', 'FINALLY'].concat EXPRESSION_END
+EXPRESSION_CLOSE = ['WHEN', 'ELSE'].concat EXPRESSION_END
 
 # Tokens that, if followed by an `IMPLICIT_CALL`, indicate a function invocation.
-IMPLICIT_FUNC    = ['IDENTIFIER', 'SUPER', ')', 'CALL_END', ']', 'INDEX_END', '@', 'THIS']
+IMPLICIT_FUNC    = ['IDENTIFIER', ')', 'CALL_END', ']', 'INDEX_END']
 
 # If preceded by an `IMPLICIT_FUNC`, indicates a function invocation.
 IMPLICIT_CALL    = [
-  'IDENTIFIER', 'NUMBER', 'STRING', 'JS', 'REGEX', 'NEW', 'PARAM_START', 'CLASS'
-  'IF', 'TRY', 'SWITCH', 'THIS', 'BOOL', 'UNARY', 'SUPER'
-  '@', '->', '=>', '[', '(', '{', '--', '++'
+  'IDENTIFIER', 'NUMBER', 'STRING', 'JS', 'REGEX', 'PARAM_START'
+  'IF', 'SWITCH', 'BOOL', 'UNARY'
+  '->', '=>', '[', '(', '{', '--', '++'
 ]
 
 IMPLICIT_UNSPACED_CALL = ['+', '-']
@@ -306,8 +302,8 @@ IMPLICIT_END     = ['POST_IF', 'FOR', 'WHILE', 'UNTIL', 'WHEN', 'BY', 'LOOP', 'T
 
 # Single-line flavors of block expressions that have unclosed endings.
 # The grammar can't disambiguate them, so we insert the implicit indentation.
-SINGLE_LINERS    = ['ELSE', '->', '=>', 'TRY', 'FINALLY', 'THEN']
-SINGLE_CLOSERS   = ['TERMINATOR', 'CATCH', 'FINALLY', 'ELSE', 'OUTDENT', 'LEADING_WHEN']
+SINGLE_LINERS    = ['ELSE', '->', '=>', 'THEN']
+SINGLE_CLOSERS   = ['TERMINATOR', 'ELSE', 'OUTDENT', 'LEADING_WHEN']
 
 # Tokens that end a line.
 LINEBREAKS       = ['TERMINATOR', 'INDENT', 'OUTDENT']

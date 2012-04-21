@@ -92,12 +92,9 @@ grammar =
     o 'Operation'
     o 'Assign'
     o 'If'
-    o 'Try'
     o 'While'
     o 'For'
     o 'Switch'
-    o 'Class'
-    o 'Throw'
   ]
 
   # An indented block of expressions. Note that the [Rewriter](rewriter.html)
@@ -113,17 +110,11 @@ grammar =
     o 'IDENTIFIER',                             -> new Literal $1
   ]
 
-  # Alphanumerics are separated from the other **Literal** matchers because
-  # they can also serve as keys in object literals.
-  AlphaNumeric: [
-    o 'NUMBER',                                 -> new Literal $1
-    o 'STRING',                                 -> new Literal $1
-  ]
-
   # All of our immediate values. Generally these can be passed straight
   # through and printed to JavaScript.
   Literal: [
-    o 'AlphaNumeric'
+    o 'NUMBER',                                 -> new Literal $1
+    o 'STRING',                                 -> new Literal $1
     o 'JS',                                     -> new Literal $1
     o 'REGEX',                                  -> new Literal $1
     o 'DEBUGGER',                               -> new Literal $1
@@ -143,17 +134,11 @@ grammar =
   # Assignment when it happens within an object literal. The difference from
   # the ordinary **Assign** is that these allow numbers and strings as keys.
   AssignObj: [
-    o 'ObjAssignable',                          -> new Value $1
-    o 'ObjAssignable : Expression',             -> new Assign new Value($1), $3, 'object'
-    o 'ObjAssignable :
+    o 'Identifier',                          -> new Value $1
+    o 'Identifier : Expression',             -> new Assign new Value($1), $3, 'object'
+    o 'Identifier :
        INDENT Expression OUTDENT',              -> new Assign new Value($1), $4, 'object'
     o 'Comment'
-  ]
-
-  ObjAssignable: [
-    o 'Identifier'
-    o 'AlphaNumeric'
-    o 'ThisProperty'
   ]
 
   # A return statement from a function body.
@@ -206,7 +191,6 @@ grammar =
  # Function Parameters
   ParamVar: [
     o 'Identifier'
-    o 'ThisProperty'
     o 'Array'
     o 'Object'
   ]
@@ -221,7 +205,6 @@ grammar =
     o 'Identifier',                             -> new Value $1
     o 'Value Accessor',                         -> $1.add $2
     o 'Invocation Accessor',                    -> new Value $1, [].concat $2
-    o 'ThisProperty'
   ]
 
   # Everything that can be assigned to.
@@ -238,7 +221,6 @@ grammar =
     o 'Literal',                                -> new Value $1
     o 'Parenthetical',                          -> new Value $1
     o 'Range',                                  -> new Value $1
-    o 'This'
   ]
 
   # The general group of accessors into an object, by property, by prototype
@@ -275,48 +257,16 @@ grammar =
     o 'AssignList OptComma INDENT AssignList OptComma OUTDENT', -> $1.concat $4
   ]
 
-  # Class definitions have optional bodies of prototype property assignments,
-  # and optional references to the superclass.
-  Class: [
-    o 'CLASS',                                           -> new Class
-    o 'CLASS Block',                                     -> new Class null, null, $2
-    o 'CLASS EXTENDS Expression',                        -> new Class null, $3
-    o 'CLASS EXTENDS Expression Block',                  -> new Class null, $3, $4
-    o 'CLASS SimpleAssignable',                          -> new Class $2
-    o 'CLASS SimpleAssignable Block',                    -> new Class $2, null, $3
-    o 'CLASS SimpleAssignable EXTENDS Expression',       -> new Class $2, $4
-    o 'CLASS SimpleAssignable EXTENDS Expression Block', -> new Class $2, $4, $5
-  ]
-
   # Ordinary function invocation, or a chained series of calls.
   Invocation: [
-    o 'Value OptFuncExist Arguments',           -> new Call $1, $3, $2
-    o 'Invocation OptFuncExist Arguments',      -> new Call $1, $3, $2
-    o 'SUPER',                                  -> new Call 'super', [new Splat new Literal 'arguments']
-    o 'SUPER Arguments',                        -> new Call 'super', $2
-  ]
-
-  # An optional existence check on a function.
-  OptFuncExist: [
-    o '',                                       -> no
-    o 'FUNC_EXIST',                             -> yes
+    o 'Value Arguments',           -> new Call $1, $2
+    o 'Invocation Arguments',      -> new Call $1, $2
   ]
 
   # The list of arguments to a function call.
   Arguments: [
     o 'CALL_START CALL_END',                    -> []
     o 'CALL_START ArgList OptComma CALL_END',   -> $2
-  ]
-
-  # A reference to the *this* current object.
-  This: [
-    o 'THIS',                                   -> new Value new Literal 'this'
-    o '@',                                      -> new Value new Literal 'this'
-  ]
-
-  # A reference to a property on *this*.
-  ThisProperty: [
-    o '@ Identifier',                           -> new Value new Literal('this'), [new Access($2)], 'this'
   ]
 
   # The array literal.
@@ -367,24 +317,6 @@ grammar =
   SimpleArgs: [
     o 'Expression'
     o 'SimpleArgs , Expression',                -> [].concat $1, $3
-  ]
-
-  # The variants of *try/catch/finally* exception handling blocks.
-  Try: [
-    o 'TRY Block',                              -> new Try $2
-    o 'TRY Block Catch',                        -> new Try $2, $3[0], $3[1]
-    o 'TRY Block FINALLY Block',                -> new Try $2, null, null, $4
-    o 'TRY Block Catch FINALLY Block',          -> new Try $2, $3[0], $3[1], $5
-  ]
-
-  # A catch clause names its error and runs a block of code.
-  Catch: [
-    o 'CATCH Identifier Block',                 -> [$2, $3]
-  ]
-
-  # Throw an exception object.
-  Throw: [
-    o 'THROW Expression',                       -> new Throw $2
   ]
 
   # Parenthetical expressions. Note that the **Parenthetical** is a **Value**,
@@ -517,9 +449,6 @@ grammar =
     o 'SimpleAssignable --',                    -> new Op '--', $1, null, true
     o 'SimpleAssignable ++',                    -> new Op '++', $1, null, true
 
-    # The existential operator
-    o 'Expression ?',                           -> new Existence $1
-
     o 'Expression +  Expression',               -> new Op '+' , $1, $3
     o 'Expression -  Expression',               -> new Op '-' , $1, $3
 
@@ -537,7 +466,6 @@ grammar =
        Expression',                             -> new Assign $1, $3, $2
     o 'SimpleAssignable COMPOUND_ASSIGN
        INDENT Expression OUTDENT',              -> new Assign $1, $4, $2
-    o 'SimpleAssignable EXTENDS Expression',    -> new Extends $1, $3
   ]
 
 
@@ -565,9 +493,9 @@ operators = [
   ['left',      'COMPARE']
   ['left',      'LOGIC']
   ['nonassoc',  'INDENT', 'OUTDENT']
-  ['right',     ':', 'ASSIGN', 'COMPOUND_ASSIGN', 'RETURN', 'THROW', 'EXTENDS']
+  ['right',     ':', 'ASSIGN', 'COMPOUND_ASSIGN', 'RETURN']
   ['right',     'FORIN', 'FOROF', 'BY', 'WHEN']
-  ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP', 'SUPER', 'CLASS']
+  ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP']
   ['right',     'POST_IF']
 ]
 

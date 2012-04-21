@@ -188,6 +188,7 @@ exports.Block = class Block extends Base
     o =
       namespace: new Namespace
     o.namespace.createVariable "printc", "func(int)", stdlib.printc
+    o.namespace.createVariable "prints", "func(string)", stdlib.prints
     code = @compile o
     codes = [code, "set [0x8ffe], 0\n"]
     for variable in o.namespace.variables
@@ -311,8 +312,7 @@ exports.Comment = class Comment extends Base
 exports.Call = class Call extends Base
   constructor: (variable, @args = []) ->
     @isNew    = false
-    @isSuper  = variable is 'super'
-    @variable = if @isSuper then null else variable
+    @variable = variable
 
   children: ['variable', 'args']
 
@@ -320,20 +320,26 @@ exports.Call = class Call extends Base
     funcName = @variable.unwrapAll().value
     funcVariable = o.namespace.find funcName
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
-    throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\"" unless funcVariable.type is "func(int)"
     throw SyntaxError "function \"#{funcName}\" takes 1 argument" unless @args.length == 1
-    arg = @args[0].unwrapAll().value
-    if not isNaN parseInt arg
-      arg_access = arg
-    else if (arg_variable = o.namespace.find arg)?
-      throw SyntaxError "can't pass argument of type #{arg_variable.type} to function \"#{funcName}\"" unless arg_variable.type is "int"
-      arg_access = "[#{arg_variable.mangledName()}]"
+    arg = @args[0].unwrapAll()
+    throw SyntaxError "invalid expression" unless arg instanceof Literal
+    if funcVariable.type is "func(int)"
+      if arg.isAssignable()
+        if (arg_variable = o.namespace.find arg.value)?
+          throw SyntaxError "can't pass argument of type #{arg_variable.type} to function \"#{funcName}\"" unless arg_variable.type is "int"
+          arg_access = "[#{arg_variable.mangledName()}]"
+        else
+          throw SyntaxError "unknown identifier: #{arg.value}"
+      else
+        arg_access = arg.value
+      return [
+        "set push, #{arg_access}"
+        "jsr #{funcVariable.mangledName()}"
+      ].join("\n")
+    else if funcVariable.type is "func(string)"
+      true
     else
-      throw SyntaxError 'invalid expression'
-    return [
-      "set push, #{arg_access}"
-      "jsr #{funcVariable.mangledName()}"
-    ].join("\n")
+      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\""
 
   # Tag this invocation as creating a new instance.
   newInstance: ->
@@ -478,90 +484,6 @@ exports.Arr = class Arr extends Base
   assigns: (name) ->
     for obj in @objects when obj.assigns name then return yes
     no
-
-#### Class
-
-# The Swark class definition.
-# Initialize a **Class** with its name, an optional superclass, and a
-# list of prototype property assignments.
-exports.Class = class Class extends Base
-  constructor: (@variable, @parent, @body = new Block) ->
-    @boundFuncs = []
-    @body.classBody = yes
-
-  children: ['variable', 'parent', 'body']
-
-  # Figure out the appropriate name for the constructor function of this class.
-  determineName: ->
-    return null unless @variable
-    decl = if tail = last @variable.properties
-      tail instanceof Access and tail.name.value
-    else
-      @variable.base.value
-    decl and= IDENTIFIER.test(decl) and decl
-
-  # For all `this`-references and bound functions in the class definition,
-  # `this` is the Class being constructed.
-  setContext: (name) ->
-    @body.traverseChildren false, (node) ->
-      return false if node.classBody
-      if node instanceof Literal and node.value is 'this'
-        node.value    = name
-      else if node instanceof Code
-        node.klass    = name
-        node.context  = name if node.bound
-
-  # Merge the properties from a top-level object as prototypal properties
-  # on the class.
-  addProperties: (node, name, o) ->
-    props = node.base.properties[..]
-    exprs = while assign = props.shift()
-      if assign instanceof Assign
-        base = assign.variable.base
-        delete assign.context
-        func = assign.value
-        if base.value is 'constructor'
-          if @ctor
-            throw new Error 'cannot define more than one constructor in a class'
-          if func.bound
-            throw new Error 'cannot define a constructor as a bound function'
-          if func instanceof Code
-            assign = @ctor = func
-          else
-            @externalCtor = o.scope.freeVariable 'class'
-            assign = new Assign new Literal(@externalCtor), func
-        else
-          if assign.variable.this
-            func.static = yes
-            if func.bound
-              func.context = name
-          else
-            assign.variable = new Value(new Literal(name), [(new Access new Literal 'prototype'), new Access base ])
-            if func instanceof Code and func.bound
-              @boundFuncs.push base
-              func.bound = no
-      assign
-    (item for item in exprs when item)
-
-  # Walk the body of the class, looking for prototype properties to be converted.
-  walkBody: (name, o) ->
-    @traverseChildren false, (child) =>
-      return false if child instanceof Class
-      if child instanceof Block
-        for node, i in exps = child.expressions
-          if node instanceof Value and node.isObject(true)
-            exps[i] = @addProperties node, name, o
-        child.expressions = exps = flatten exps
-
-  # `use strict` (and other directives) must be the first expression statement(s)
-  # of a function body. This method ensures the prologue is correctly positioned
-  # above the `constructor`.
-  hoistDirectivePrologue: ->
-    index = 0
-    {expressions} = @body
-    ++index while (node = expressions[index]) and node instanceof Comment or
-      node instanceof Value and node.isString()
-    @directives = expressions.splice 0, index
 
 #### Assign
 
@@ -821,49 +743,6 @@ exports.In = class In extends Base
 
   toString: (idt) ->
     super idt, @constructor.name + if @negated then '!' else ''
-
-#### Try
-
-# A classic *try/catch/finally* block.
-exports.Try = class Try extends Base
-  constructor: (@attempt, @error, @recovery, @ensure) ->
-
-  children: ['attempt', 'recovery', 'ensure']
-
-  isStatement: YES
-
-  jumps: (o) -> @attempt.jumps(o) or @recovery?.jumps(o)
-
-  makeReturn: (res) ->
-    @attempt  = @attempt .makeReturn res if @attempt
-    @recovery = @recovery.makeReturn res if @recovery
-    this
-
-#### Throw
-
-# Simple node to throw an exception.
-exports.Throw = class Throw extends Base
-  constructor: (@expression) ->
-
-  children: ['expression']
-
-  isStatement: YES
-  jumps:       NO
-
-  # A **Throw** is already a return, of sorts...
-  makeReturn: THIS
-
-#### Existence
-
-# Checks a variable for existence -- not *null* and not *undefined*. This is
-# similar to `.nil?` in Ruby, and avoids having to consult a JavaScript truth
-# table.
-exports.Existence = class Existence extends Base
-  constructor: (@expression) ->
-
-  children: ['expression']
-
-  invert: NEGATE
 
 #### Parens
 
