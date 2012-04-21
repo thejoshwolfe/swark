@@ -1,0 +1,6 @@
+beer := func(a int) ->
+  printc a + 0x30
+  return if a == 0
+  beer a - 1
+beer 9
+printc 10
