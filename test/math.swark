@@ -1,0 +1,7 @@
+a := 19
+b := 31
+c := a + b
+printc (c / 2) * 9 - 160
+c += 1
+printc c + 30
+printc 100 / 10
