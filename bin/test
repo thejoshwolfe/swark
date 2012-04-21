@@ -82,8 +82,6 @@ def main():
             tests[test_name]['source'] = open(absolute(f), 'r').read()
     retain_names = set()
     for arg in args:
-        if arg.endswith(".swark"):
-            arg = arg[:-len(".swark")]
         if arg not in tests:
             sys.exit("test not found: " + arg)
         retain_names.add(arg)
@@ -141,7 +139,7 @@ def main():
 The compiler exited with returncode %i\
 """ % (compiler_stdout, compiler_stderr, compiler.returncode))
 
-                if compiler_stderr != test['errors']:
+                if compiler_stderr.split("\n")[0] != test['errors'].split("\n")[0]:
                     return add_fail("wrong compiler stderr", "F", """\
 ---- Compiler stderr: ----
 %s\
@@ -150,10 +148,11 @@ The compiler exited with returncode %i\
 --------""" % (compiler_stderr, test['errors']))
 
             # compiler phase looks good, now test the generated code
-            (run_output, run_stderr, run_returncode) = execute_asm_code(compiler_stdout)
+            if test['out']:
+                (run_output, run_stderr, run_returncode) = execute_asm_code(compiler_stdout)
 
-            if run_returncode != 0 or run_stderr != "":
-                return add_fail("run program crashed", "R", """\
+                if run_returncode != 0 or run_stderr != "":
+                    return add_fail("run program crashed", "R", """\
 ---- Run Program stdout: ----
 %s\
 ---- Run Program stderr: ----
@@ -162,8 +161,8 @@ The compiler exited with returncode %i\
 Run program exited with returncode %i\
 """ % (run_output, run_stderr, run_returncode))
 
-            if run_output != test['out']:
-                return add_fail("wrong run output", "W", """\
+                if run_output != test['out']:
+                    return add_fail("wrong run output", "W", """\
 ---- Run Program stdout: ----
 %s\
 ---- Expected Program stdout: ----

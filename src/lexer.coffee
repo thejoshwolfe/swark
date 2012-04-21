@@ -33,7 +33,7 @@ exports.Lexer = class Lexer
   # unless explicitly asked not to.
   tokenize: (code, opts = {}) ->
     code     = "\n#{code}" if WHITESPACE.test code
-    code     = code.replace(/\r/g, '').replace TRAILING_SPACES, ''
+    code     = code.replace TRAILING_SPACES, ''
 
     @code    = code           # The remainder of the source code.
     @line    = opts.line or 0 # The current line.
@@ -49,7 +49,8 @@ exports.Lexer = class Lexer
     # `@literalToken` is the fallback catch-all.
     i = 0
     while @chunk = code[i..]
-      i += @identifierToken() or
+      i += @invalidToken()    or
+           @identifierToken() or
            @commentToken()    or
            @whitespaceToken() or
            @lineToken()       or
@@ -67,6 +68,11 @@ exports.Lexer = class Lexer
 
   # Tokenizers
   # ----------
+  invalidToken: ->
+    c = @chunk[0]
+    if c in "\t\r"
+      @error "#{JSON.stringify(c)} is not a valid character"
+    return 0
 
   # Matches identifying literals: variables, keywords, method names, etc.
   # Check to ensure that JavaScript reserved words aren't being used as
@@ -591,13 +597,13 @@ OPERATOR   = /// ^ (
    | \.{2,3}           # range or splat
 ) ///
 
-WHITESPACE = /^[^\n\S]+/
+WHITESPACE = /^\ +/
 
 COMMENT    = /^###([^#][\s\S]*?)(?:###[^\n\S]*|(?:###)?$)|^(?:\s*#(?!##[^#]).*)+/
 
 CODE       = /^[-=]>/
 
-MULTI_DENT = /^(?:\n[^\n\S]*)+/
+MULTI_DENT = /^(?:\n\ *)+/
 
 SIMPLESTR  = /^'[^\\']*(?:\\.[^\\']*)*'/
 
