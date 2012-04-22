@@ -24,15 +24,29 @@ NO      = -> no
 THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
+class Type
+  constructor: (@basic, @args=[]) ->
+    @string = switch @basic
+      when "func" then "func(#{@args.map((x)->x.string).join(",")})"
+      else @basic
+typeRegistry = {}
+getType = (type) ->
+  # singletons, so that comparisons work
+  return typeRegistry[type.string] ?= type
+intType = getType new Type "int"
+stringType = getType new Type "string"
 class Variable
   constructor: (@name, @type, @namespace) ->
   mangledName: ->
     "_" + @name
+class Func
+  constructor: (@label, @code) ->
 
 class Namespace
   constructor: ->
     @names = {}
     @variables = []
+    @funcs = []
     labelCount = 0
     @nextLabel = -> "_#{labelCount++}"
   find: (name) ->
@@ -47,6 +61,11 @@ class Namespace
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
     @variables.push {asm}
     label
+  createFunc: (code) ->
+    func = new Func @nextLabel(), code
+    @funcs.push func
+    @variables.push func
+    func
 
 #### Base
 
@@ -194,17 +213,22 @@ exports.Block = class Block extends Base
   compileRoot: ->
     o =
       namespace: new Namespace
-    o.namespace.createVariable("printc", "func(int)").asm = stdlib.printc
-    o.namespace.createVariable("prints", "func(string)").asm = stdlib.prints
-    code = @compile o
+    o.namespace.createVariable("printc", getType new Type "func", [intType]).asm = stdlib.printc
+    o.namespace.createVariable("prints", getType new Type "func", [stringType]).asm = stdlib.prints
+    code = @compileStatement o
     codes = [code, "set [0x8ffe], 0\n"]
+
+    # breadth-first traversal through declared functions
+    for func in o.namespace.funcs
+      func.asm = func.code.compileFunc o
+
     for variable in o.namespace.variables
       codes.push variable.asm
     codes.join "\n"
-  compile: (o) ->
+  compileStatement: (o) ->
     codes = []
     for expression in @expressions
-      codes.push expression.compile o
+      codes.push expression.compileStatement o
     codes.join "\n"
 
   # Wrap up the given nodes as a **Block**, unless it already happens
@@ -226,14 +250,14 @@ exports.Literal = class Literal extends Base
       when "false" then "0"
       else value
 
-  compile: (o) ->
+  compileExpression: (o) ->
     unless @type?
       variable = o.namespace.find @value
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
       return {type: variable.type, access: "[#{variable.mangledName()}]"}
     switch @type
-      when "int" then {type: @type, access: @value}
-      when "string" then {type: @type, access: o.namespace.createLiteralString JSON.parse @value}
+      when "int" then {type: intType, access: @value}
+      when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -337,20 +361,22 @@ exports.Call = class Call extends Base
 
   children: ['variable', 'args']
 
-  compile: (o) ->
+  compileStatement: (o) ->
     funcName = @variable.unwrapAll().value
     funcVariable = o.namespace.find funcName
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
-    if funcVariable.type not in ["func(int)", "func(string)"]
-      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type}\""
-    throw SyntaxError "function \"#{funcName}\" takes 1 argument" unless @args.length == 1
-    required_arg_type = funcVariable.type.match(/\((.*)\)/)[1]
-    arg = @args[0].unwrapAll().compile o
-    throw SyntaxError "can't pass argument of type #{arg.type} to function \"#{funcName}\"" unless arg.type is required_arg_type
-    return [
-      "set push, #{arg.access}"
-      "jsr #{funcVariable.mangledName()}"
-    ].join("\n")
+    unless funcVariable.type.basic is "func"
+      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type.string}\""
+    unless funcVariable.type.args.length is @args.length
+      throw SyntaxError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@args.length}"
+    codes = []
+    for arg, i in @args
+      arg = arg.unwrapAll().compileExpression o
+      unless funcVariable.type.args[i] is arg.type
+        throw SyntaxError "argument #{i} to function #{funcName} should have type #{funcVariable.type.args[i].string}, rather than #{arg.type.string}"
+      codes.push "set push, #{arg.access}"
+    codes.push "jsr #{funcVariable.mangledName()}"
+    return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
   newInstance: ->
@@ -507,9 +533,9 @@ exports.Assign = class Assign extends Base
 
   children: ['variable', 'value']
 
-  compile: (o) ->
+  compileStatement: (o) ->
     name = @variable.unwrapAll().value
-    value = @value.unwrapAll().compile o
+    value = @value.unwrapAll().compileExpression o
     variable = o.namespace.find name
     if @context is ":="
       throw SyntaxError "variable \"#{name}\" is already declared" if variable?
@@ -536,6 +562,15 @@ exports.Code = class Code extends Base
     @body    = body or new Block
     @bound   = tag is 'boundfunc'
     @context = '_this' if @bound
+
+  compileExpression: (o) ->
+    throw SyntaxError "func declarations cannot have parameters" unless @params.length is 0
+    @func = o.namespace.createFunc this
+    {type: getType(new Type "func"), access: @func.label}
+
+  compileFunc: (o) ->
+    code = "; TODO function body here"
+    ":#{@func.label}\n#{code}"
 
   children: ['params', 'body']
 
