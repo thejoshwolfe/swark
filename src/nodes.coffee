@@ -3,7 +3,6 @@
 # but some are created by other nodes as a method of code generation. To convert
 # the syntax tree into a string of JavaScript code, call `compile()` on the root.
 
-{Scope} = require './scope'
 stdlib = require './stdlib'
 
 # Return a flattened version of an array.
