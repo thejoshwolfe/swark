@@ -43,14 +43,34 @@ class Func
   constructor: (@label, @code) ->
 
 class Namespace
-  constructor: ->
+  constructor: (@parent) ->
     @names = {}
+    @root = @parent?.root
+  find: (name) ->
+    @names[name] or @parent?.find name
+  createLocalNamespace: ->
+    new LocalNamespace this
+  scopeNameMangle: ->
+    return "" unless @parent?
+    return @parent.scopeNameMangle() + @index + ".."
+class LocalNamespace extends Namespace
+  constructor: (args...) ->
+    super(args...)
+    createRootRedirect = (name) =>
+      @[name] = (args...) ->
+        @root[name](args...)
+    createRootRedirect "createLiteralString"
+    createRootRedirect "createFunc"
+  createVariable: (name, type) ->
+    variable = new Variable name, type
+class GlobalNamespace extends Namespace
+  constructor: ->
+    super(null)
+    @root = this
     @variables = []
     @funcs = []
     labelCount = 0
     @nextLabel = -> "_#{labelCount++}"
-  find: (name) ->
-    @names[name]
   createVariable: (name, type) ->
     variable = new Variable name, type, this
     @names[name] = variable
@@ -211,8 +231,7 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
-    o =
-      namespace: new Namespace
+    o = {namespace: new GlobalNamespace}
     o.namespace.createVariable("printc", getType new Type "func", [intType]).asm = stdlib.printc
     o.namespace.createVariable("prints", getType new Type "func", [stringType]).asm = stdlib.prints
     code = @compileStatement o
@@ -538,7 +557,7 @@ exports.Assign = class Assign extends Base
     value = @value.unwrapAll().compileExpression o
     variable = o.namespace.find name
     if @context is ":="
-      throw SyntaxError "variable \"#{name}\" is already declared" if variable?
+      throw SyntaxError "variable \"#{name}\" is already declared" if variable?.namespace is o.namespace
       variable = o.namespace.createVariable name, value.type
       variable.asm = ":#{variable.mangledName()} dat 0"
     else
@@ -569,8 +588,10 @@ exports.Code = class Code extends Base
     {type: getType(new Type "func"), access: @func.label}
 
   compileFunc: (o) ->
-    code = "; TODO function body here"
-    ":#{@func.label}\n#{code}"
+    o = {namespace: o.namespace.createLocalNamespace()}
+    code = @body.compileStatement o
+    returnCode = "set pc, pop"
+    ":#{@func.label}\n#{code}\n#{returnCode}"
 
   children: ['params', 'body']
 
