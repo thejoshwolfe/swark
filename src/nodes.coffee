@@ -1,7 +1,6 @@
 # this file contains all of the node classes for the syntax tree. Most
 # nodes are created as the result of actions in the [grammar](grammar.html),
-# but some are created by other nodes as a method of code generation. To convert
-# the syntax tree into a string of JavaScript code, call `compile()` on the root.
+# but some are created by other nodes as a method of code generation.
 
 stdlib = require './stdlib'
 
