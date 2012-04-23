@@ -50,9 +50,6 @@ class Namespace
     @names[name] or @parent?.find name
   createLocalNamespace: ->
     new LocalNamespace this
-  scopeNameMangle: ->
-    return "" unless @parent?
-    return @parent.scopeNameMangle() + @index + ".."
 class LocalNamespace extends Namespace
   constructor: (args...) ->
     super(args...)
