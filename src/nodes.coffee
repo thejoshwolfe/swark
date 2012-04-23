@@ -36,37 +36,22 @@ intType = getType new Type "int"
 stringType = getType new Type "string"
 class Variable
   constructor: (@name, @type, @namespace) ->
+    @offset = @namespace.nextOffset()
   mangledName: ->
     "_" + @name
 class Func
   constructor: (@label, @code) ->
 
+dats = ""
+addDat = (dat) -> dats += dat
 class Namespace
   constructor: (@parent) ->
     @names = {}
     @root = @parent?.root
-  find: (name) ->
-    @names[name] or @parent?.find name
-  createLocalNamespace: ->
-    new LocalNamespace this
-class LocalNamespace extends Namespace
-  constructor: (args...) ->
-    super(args...)
-    createRootRedirect = (name) =>
-      @[name] = (args...) ->
-        @root[name](args...)
-    createRootRedirect "createLiteralString"
-    createRootRedirect "createFunc"
-  createVariable: (name, type) ->
-    variable = new Variable name, type
-class GlobalNamespace extends Namespace
-  constructor: ->
-    super(null)
-    @root = this
+    @next_offset = 0
     @variables = []
     @funcs = []
-    labelCount = 0
-    @nextLabel = -> "_#{labelCount++}"
+    @label_count = 0
   createVariable: (name, type) ->
     variable = new Variable name, type, this
     @names[name] = variable
@@ -74,14 +59,19 @@ class GlobalNamespace extends Namespace
     variable
   createLiteralString: (value) ->
     label = @nextLabel()
-    asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
-    @variables.push {asm}
+    addDat ":#{label} dat #{value.length}, #{JSON.stringify value}\n"
     label
   createFunc: (code) ->
     func = new Func @nextLabel(), code
     @funcs.push func
     @variables.push func
     func
+  nextOffset: -> @next_offset++
+  nextLabel: -> "_#{@label_count++}"
+  find: (name) ->
+    @names[name] or @parent?.find name
+  createNamespace: ->
+    new Namespace this
 
 #### Base
 
@@ -227,19 +217,29 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
-    o = {namespace: new GlobalNamespace}
-    o.namespace.createVariable("printc", getType new Type "func", [intType]).asm = stdlib.printc
-    o.namespace.createVariable("prints", getType new Type "func", [stringType]).asm = stdlib.prints
+    o = {namespace: new Namespace}
+
+    stdlib_code = ""
+    before_code = ""
+    make_stdlib_func = (name, type) ->
+      variable = o.namespace.createVariable name, type
+      before_code += "set [sp+#{variable.offset}], #{variable.mangledName()}\n"
+      stdlib_code += stdlib.funcs[name] + "\n"
+    make_stdlib_func("printc", getType new Type "func", [intType])
+    make_stdlib_func("prints", getType new Type "func", [stringType])
+
+    codes = []
     code = @compileStatement o
-    codes = [code, "set [0x8ffe], 0\n"]
+    codes.push "sub sp, #{o.namespace.variables.length}"
+    codes.push before_code
+    codes.push code
+    codes.push "set [0x8ffe], 0"
 
-    # breadth-first traversal through declared functions
+    codes.push stdlib_code
     for func in o.namespace.funcs
-      func.asm = func.code.compileFunc o
+      codes.push func.code.compileFunc o
+    codes.join("\n") + dats
 
-    for variable in o.namespace.variables
-      codes.push variable.asm
-    codes.join "\n"
   compileStatement: (o) ->
     codes = []
     for expression in @expressions
@@ -269,7 +269,7 @@ exports.Literal = class Literal extends Base
     unless @type?
       variable = o.namespace.find @value
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
-      return {type: variable.type, access: "[#{variable.mangledName()}]"}
+      return {type: variable.type, access: "[sp+#{variable.offset}]"}
     switch @type
       when "int" then {type: intType, access: @value}
       when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
@@ -381,16 +381,16 @@ exports.Call = class Call extends Base
     funcVariable = o.namespace.find funcName
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
     unless funcVariable.type.basic is "func"
-      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type.string}\""
+      throw TypeError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type.string}\""
     unless funcVariable.type.args.length is @args.length
-      throw SyntaxError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@args.length}"
+      throw TypeError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@args.length}"
     codes = []
     for arg, i in @args
       arg = arg.unwrapAll().compileExpression o
       unless funcVariable.type.args[i] is arg.type
-        throw SyntaxError "argument #{i} to function #{funcName} should have type #{funcVariable.type.args[i].string}, rather than #{arg.type.string}"
+        throw TypeError "argument #{i} to function #{funcName} should have type #{funcVariable.type.args[i].string}, rather than #{arg.type.string}"
       codes.push "set push, #{arg.access}"
-    codes.push "jsr #{funcVariable.mangledName()}"
+    codes.push "jsr [sp+#{funcVariable.offset}]"
     return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
@@ -555,11 +555,10 @@ exports.Assign = class Assign extends Base
     if @context is ":="
       throw SyntaxError "variable \"#{name}\" is already declared" if variable?.namespace is o.namespace
       variable = o.namespace.createVariable name, value.type
-      variable.asm = ":#{variable.mangledName()} dat 0"
     else
       throw SyntaxError "variable \"#{name}\" is not declared" unless variable?
       throw TypeError "cannot assign value of type \"#{value.type.string}\" to variable of type \"#{variable.type.string}\"" unless value.type is variable.type
-    "set [#{variable.mangledName()}], #{value.access}"
+    "set [sp+#{variable.offset}], #{value.access}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -585,10 +584,14 @@ exports.Code = class Code extends Base
     {type: getType(new Type "func"), access: @func.label}
 
   compileFunc: (o) ->
-    o = {namespace: o.namespace.createLocalNamespace()}
+    o = {namespace: o.namespace.createNamespace()}
     code = @body.compileStatement o
-    returnCode = "set pc, pop"
-    ":#{@func.label}\n#{code}\n#{returnCode}"
+
+    """:#{@func.label}
+    sub sp, #{o.namespace.variables.length}
+    #{code}
+    add sp, #{o.namespace.variables.length}
+    set pc, pop"""
 
   children: ['params', 'body']
 

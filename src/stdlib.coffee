@@ -1,12 +1,11 @@
-
-exports.printc = '''
+exports.funcs =
+  printc: '''
 :_printc
     set z, pop
     set [0x8fff], pop
     set pc, z
 '''
-
-exports.prints = '''
+  prints: '''
 :_prints
     set z, pop
     set a, pop        ; pointer to string object
