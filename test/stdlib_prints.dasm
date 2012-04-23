@@ -10,15 +10,18 @@ set [0x8ffe], 0
     dat 6, "12345", 10
 
 :_prints
-    set z, pop
-    set a, pop        ; pointer to string object
+    set z, sp
+    set a, [z+1]      ; pointer to string object
     set b, a
     add b, [b]        ; b points to end of string - 1
     add a, 1          ; a points to first char of string
 
     :_prints_loop
         ifg a, b
-            set pc, z
+            set pc, _prints_return
         set [0x8fff], [a]     ; print character
         add a, 1
         set pc, _prints_loop
+    :_prints_return
+    add sp, 2
+    set pc, [z]
