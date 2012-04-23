@@ -559,6 +559,7 @@ exports.Assign = class Assign extends Base
       variable.asm = ":#{variable.mangledName()} dat 0"
     else
       throw SyntaxError "variable \"#{name}\" is not declared" unless variable?
+      throw TypeError "cannot assign value of type \"#{value.type.string}\" to variable of type \"#{variable.type.string}\"" unless value.type is variable.type
     "set [#{variable.mangledName()}], #{value.access}"
 
   isStatement: (o) ->
