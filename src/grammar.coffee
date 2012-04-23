@@ -151,6 +151,7 @@ grammar =
   # list.
   Code: [
     o 'PARAM_START ParamList PARAM_END -> Block', -> new Code $2, $5
+    o '-> Block',                               -> new Code [], $2
   ]
 
   # An optional, trailing comma.
