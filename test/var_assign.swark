@@ -1,0 +1,4 @@
+b0_lah  :=  "deerp\n"
+_herka   := b0_lah
+LOL = _herka
+prints LOL
