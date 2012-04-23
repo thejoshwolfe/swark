@@ -1,4 +1,9 @@
 b0_lah  :=  "deerp\n"
-_herka   := b0_lah
-LOL = _herka
-prints LOL
+aeu     := 66
+asdf:=9
+_herka   := "der terk err jerrbbs!"
+_herka = b0_lah
+prints _herka
+asdf = aeu
+printc asdf
+printc 10

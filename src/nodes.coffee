@@ -558,7 +558,7 @@ exports.Assign = class Assign extends Base
       variable = o.namespace.createVariable name, value.type
       variable.asm = ":#{variable.mangledName()} dat 0"
     else
-      throw SyntaxError "only := assignments allowed"
+      throw SyntaxError "variable \"#{name}\" is not declared" unless variable?
     "set [#{variable.mangledName()}], #{value.access}"
 
   isStatement: (o) ->

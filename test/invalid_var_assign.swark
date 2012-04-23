@@ -1,0 +1,3 @@
+lalanumber := 65
+lalastring := "hi"
+lalanumber = lalastring
