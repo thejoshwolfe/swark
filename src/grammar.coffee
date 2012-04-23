@@ -150,7 +150,7 @@ grammar =
   # of **Block** preceded by a function arrow, with an optional parameter
   # list.
   Code: [
-    o 'FUNC PARAM_START ParamList PARAM_END -> Block', -> new Code $3, $6
+    o 'PARAM_START ParamList PARAM_END -> Block', -> new Code $2, $5
   ]
 
   # An optional, trailing comma.

@@ -1,2 +1,2 @@
-printc func()int -> 65
+printc (-> 65)()
 printc 10

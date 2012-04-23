@@ -1,5 +1,5 @@
 a := 66
-f := func() ->
+f := ->
   a := 65
   printc a
 f()
