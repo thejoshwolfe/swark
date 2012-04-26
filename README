@@ -33,5 +33,6 @@ Technical info that should find a home in a different document someday:
     Calling convention is to push each argument in order and then jump with jsr
     which will push the return address as the final item on the stack.
     All registers may be mangled by callees, so callers should save any
-    important data to the stack before calling subroutines.
+    important data to the stack before calling subroutines. The first parameter
+    is always a pointer to the enclosing scope's stack frame.
 

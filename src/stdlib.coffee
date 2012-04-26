@@ -3,6 +3,7 @@ exports.printc = '''
 ; printc
     set z, pop
     set [0x8fff], pop
+    set x, pop        ; don't care about the enclosing scope
     set pc, z
 '''
 
@@ -10,6 +11,7 @@ exports.prints = '''
 ; prints
     set z, pop
     set a, pop        ; pointer to string object
+    set x, pop        ; don't care about the enclosing scope
     set b, a
     add b, [b]        ; b points to end of string - 1
     add a, 1          ; a points to first char of string

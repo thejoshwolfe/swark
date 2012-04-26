@@ -64,9 +64,8 @@ linkTypes = (leftType, rightType) ->
 
 class Variable
   constructor: (@localOffset, @type, @namespace) ->
-  access: ->
     positive = (@localOffset + 0x10000) % 0x10000
-    "[z+0x#{positive.toString 16}]"
+    @access = "[z+0x#{positive.toString 16}]"
 
 class Namespace
   constructor: (@parent)->
@@ -80,19 +79,25 @@ class Namespace
       @root = @parent.root
       @extraAsm = @root.extraAsm
       @nextLabel = @root.nextLabel
-    @localVariableCount = 0
+    @parameterCount = 0 # doesn't include secret closure context
+    @localVariableCount = 0 # doesn't include parameters or the return address
     @nextLocalOffset = -> -++@localVariableCount
   find: (name) ->
     @names[name] or @parent?.find name
   createVariable: (name, type, localOffset) ->
-    variable = new Variable localOffset or @nextLocalOffset(), type, this
+    if localOffset?
+      # try to figure out how many parameters with have
+      @parameterCount = localOffset if localOffset > @parameterCount
+    else
+      localOffset = @nextLocalOffset()
+    variable = new Variable localOffset, type, this
     @names[name] = variable
     variable
   createBuiltinFunc: (name, type, asm) ->
     label = @nextLabel()
     @extraAsm.push {asm: ":#{label}\n#{asm}"}
     variable = @createVariable name, type
-    "set #{variable.access()}, #{label}"
+    "set #{variable.access}, #{label}"
   createLiteralString: (value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
@@ -286,9 +291,18 @@ exports.Literal = class Literal extends Base
 
   compileExpression: (o) ->
     unless @type?
-      variable = o.namespace.find @value
+      namespace = o.namespace
+      codes = []
+      stackRegister = "z"
+      while namespace?
+        break if (variable = namespace.names[@value])?
+        # access an outter scope
+        codes.push "set x, [#{stackRegister}+#{namespace.parameterCount + 1}]"
+        stackRegister = "x"
+        namespace = namespace.parent
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
-      return {type: variable.type, access: variable.access()}
+      asm = codes.join "\n" or null
+      return {type: variable.type, access: variable.access.replace("z", stackRegister), asm}
     switch @type
       when "int" then {type: intType, access: @value}
       when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
@@ -396,10 +410,8 @@ exports.Call = class Call extends Base
   children: ['variable', 'argNodes']
 
   compileStatement: (o) ->
-    funcName = @variable.unwrapAll().value
-    funcVariable = o.namespace.find funcName
-    throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
-    funcType = funcVariable.type.findRoot()
+    funcValue = @variable.unwrapAll().compileExpression o
+    funcType = funcValue.type.findRoot()
     unless funcType.basic is "func"
       throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcType.string}\""
     unless funcType.args.length is @argNodes.length
@@ -417,9 +429,13 @@ exports.Call = class Call extends Base
     codes = []
     # position the stack just after our local variables
     codes.push "sub sp, #{o.namespace.localVariableCount}"
+    # don't forget the secret close context
+    codes.push "set push, z"
     for arg in args
+      codes.push arg.asm if arg.asm
       codes.push "set push, #{arg.access}"
-    codes.push "jsr #{funcVariable.access()}"
+    codes.push funcValue.asm if funcValue.asm
+    codes.push "jsr #{funcValue.access}"
     # restore the stack and z
     codes.push "add sp, #{o.namespace.localVariableCount}"
     codes.push "set z, sp"
@@ -589,12 +605,15 @@ exports.Assign = class Assign extends Base
       variableType = new Type
       variable = o.namespace.createVariable name, variableType
       linkTypes variableType, value.type
-      variable.asm = ":#{variable.label} dat 0"
     else
       unless variable?
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
-    "set #{variable.access()}, #{value.access}"
+    codes = []
+    codes.push variable.asm if variable.asm # TODO: this doesn't make sense
+    codes.push value.asm if value.asm
+    codes.push "set #{variable.access}, #{value.access}"
+    codes.join "\n"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -626,10 +645,12 @@ exports.Code = class Code extends Base
     codes.push ":#{@label}"
     # we need z because sp can't be offset inline
     codes.push "set z, sp"
-    codes.push @body.compileStatement o
+    body = @body.compileStatement o
+    codes.push body if body
     # TODO figure out how to return stuff
     linkTypes @type.findRoot().returnType, voidType
-    codes.push "set pc, pop"
+    codes.push "add sp, #{o.namespace.parameterCount + 2}"
+    codes.push "set pc, [z]"
     o.namespace.extraAsm.push asm: codes.join "\n"
 
   children: ['params', 'body']
