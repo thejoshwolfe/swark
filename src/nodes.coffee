@@ -63,9 +63,10 @@ linkTypes = (leftType, rightType) ->
   leftType.linkTo rightType
 
 class Variable
-  constructor: (@label, @type, @namespace) ->
-class Func
-  constructor: (@label, @codeNode) ->
+  constructor: (@localOffset, @type, @namespace) ->
+  access: ->
+    positive = (@localOffset + 0x10000) % 0x10000
+    "[z+0x#{positive.toString 16}]"
 
 class Namespace
   constructor: (@parent)->
@@ -79,25 +80,24 @@ class Namespace
       @root = @parent.root
       @extraAsm = @root.extraAsm
       @nextLabel = @root.nextLabel
+    @localVariableCount = 1 # return address is at index 0
+    @nextLocalOffset = -> -@localVariableCount++
   find: (name) ->
     @names[name] or @parent?.find name
-  createVariable: (name, type) ->
-    variable = new Variable "_"+name, type, this
+  createVariable: (name, type, localOffset) ->
+    variable = new Variable localOffset or @nextLocalOffset(), type, this
     @names[name] = variable
-    @extraAsm.push variable
     variable
   createBuiltinFunc: (name, type, asm) ->
     label = @nextLabel()
     @extraAsm.push {asm: ":#{label}\n#{asm}"}
     variable = @createVariable name, type
-    variable.asm = ":#{variable.label} dat #{label}"
+    "set #{variable.access()}, #{label}"
   createLiteralString: (value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
     @extraAsm.push {asm}
     label
-  createFunc: (codeNode) ->
-    new Func @nextLabel(), codeNode
   createSubNamespace: ->
     new Namespace this
 
@@ -246,10 +246,15 @@ exports.Block = class Block extends Base
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
     o = {namespace: new Namespace}
-    o.namespace.createBuiltinFunc "printc", new Type("func", [intType], voidType), stdlib.printc
-    o.namespace.createBuiltinFunc "prints", new Type("func", [stringType], voidType), stdlib.prints
-    code = @compileStatement o
-    codes = [code, "set [0x8ffe], 0\n"]
+    codes = []
+    codes.push "; stdlib"
+    codes.push o.namespace.createBuiltinFunc "printc", new Type("func", [intType], voidType), stdlib.printc
+    codes.push o.namespace.createBuiltinFunc "prints", new Type("func", [stringType], voidType), stdlib.prints
+    codes.push "; main"
+    codes.push @compileStatement o
+    codes.push "; exit"
+    codes.push "set [0x8ffe], 0"
+    codes.push ""
 
     for variable in o.namespace.extraAsm
       codes.push variable.asm
@@ -283,7 +288,7 @@ exports.Literal = class Literal extends Base
     unless @type?
       variable = o.namespace.find @value
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
-      return {type: variable.type, access: "[#{variable.label}]"}
+      return {type: variable.type, access: variable.access()}
     switch @type
       when "int" then {type: intType, access: @value}
       when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
@@ -409,8 +414,15 @@ exports.Call = class Call extends Base
     # good news, guys: you're parameter types are now known!
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
-    codes = ("set push, #{arg.access}" for arg in args)
-    codes.push "jsr [#{funcVariable.label}]"
+    codes = []
+    # position the stack just after our local variables
+    codes.push "sub sp, #{o.namespace.localVariableCount}"
+    for arg in args
+      codes.push "set push, #{arg.access}"
+    codes.push "jsr #{funcVariable.access()}"
+    # restore the stack and z
+    codes.push "add sp, #{o.namespace.localVariableCount}"
+    codes.push "set z, sp"
     return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
@@ -582,7 +594,7 @@ exports.Assign = class Assign extends Base
       unless variable?
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
-    "set [#{variable.label}], #{value.access}"
+    "set #{variable.access()}, #{value.access}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -603,18 +615,22 @@ exports.Code = class Code extends Base
     @context = '_this' if @bound
 
   compileExpression: (o) ->
-    @func = o.namespace.createFunc this
-    @func.type = new Type "func", (new Type for _ in @params), new Type
-    @func.type.codeNodes.push this
-    {type: @func.type, access: @func.label}
+    @label = o.namespace.nextLabel()
+    @type = new Type "func", (new Type for _ in @params), new Type
+    @type.codeNodes.push this
+    {type: @type, access: @label}
 
   compileFunc: (o) ->
     o = {namespace: o.namespace.createSubNamespace()}
-    code = @body.compileStatement o
-    # TODO figure returning stuff
-    linkTypes @func.type.findRoot().returnType, voidType
-    returnCode = "set pc, pop"
-    o.namespace.extraAsm.push {asm: ":#{@func.label}\n#{code}\n#{returnCode}"}
+    codes = []
+    codes.push ":#{@label}"
+    # we need z because sp can't be offset inline
+    codes.push "set z, sp"
+    codes.push @body.compileStatement o
+    # TODO figure out how to return stuff
+    linkTypes @type.findRoot().returnType, voidType
+    codes.push "set pc, pop"
+    o.namespace.extraAsm.push asm: codes.join "\n"
 
   children: ['params', 'body']
 
