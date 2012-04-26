@@ -1,13 +1,13 @@
 
 exports.printc = '''
-:_printc
+; printc
     set z, pop
     set [0x8fff], pop
     set pc, z
 '''
 
 exports.prints = '''
-:_prints
+; prints
     set z, pop
     set a, pop        ; pointer to string object
     set b, a

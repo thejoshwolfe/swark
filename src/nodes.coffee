@@ -86,6 +86,11 @@ class Namespace
     @names[name] = variable
     @extraAsm.push variable
     variable
+  createBuiltinFunc: (name, type, asm) ->
+    label = @nextLabel()
+    @extraAsm.push {asm: ":#{label}\n#{asm}"}
+    variable = @createVariable name, type
+    variable.asm = ":#{variable.label} dat #{label}"
   createLiteralString: (value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
@@ -241,8 +246,8 @@ exports.Block = class Block extends Base
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
     o = {namespace: new Namespace}
-    o.namespace.createVariable("printc", new Type "func", [intType], voidType).asm = stdlib.printc
-    o.namespace.createVariable("prints", new Type "func", [stringType], voidType).asm = stdlib.prints
+    o.namespace.createBuiltinFunc "printc", new Type("func", [intType], voidType), stdlib.printc
+    o.namespace.createBuiltinFunc "prints", new Type("func", [stringType], voidType), stdlib.prints
     code = @compileStatement o
     codes = [code, "set [0x8ffe], 0\n"]
 
@@ -405,7 +410,7 @@ exports.Call = class Call extends Base
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
     codes = ("set push, #{arg.access}" for arg in args)
-    codes.push "jsr #{funcVariable.label}"
+    codes.push "jsr [#{funcVariable.label}]"
     return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
