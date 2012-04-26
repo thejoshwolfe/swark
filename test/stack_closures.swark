@@ -1,6 +1,7 @@
 a := 66
 f := ->
   a := 65
+  printc a
 f()
 printc a
 printc 10
