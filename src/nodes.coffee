@@ -23,64 +23,74 @@ THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
 class Type
-  constructor: (@basic, @args=[]) ->
-    @string = switch @basic
-      when "func" then "func(#{@args.map((x)->x.string).join(",")})"
-      else @basic
-typeRegistry = {}
-getType = (type) ->
-  # singletons, so that comparisons work
-  return typeRegistry[type.string] ?= type
-intType = getType new Type "int"
-stringType = getType new Type "string"
+  constructor: (@basic, @args=[], @returnType) ->
+    @synonym = this
+    if @basic is "func" and not @returnType?
+      @returnType = new Type
+  findRoot: ->
+    return this if this is @synonym
+    return @synonym = @synonym.findRoot()
+voidType = new Type "void"
+intType = new Type "int"
+stringType = new Type "string"
+forbidVoid = (compiledThing) ->
+  if compiledThing.type is voidType
+    throw TypeError "that thing can't be void"
+linkTypes = (leftType, rightType) ->
+  # TODO: detect circularity
+  [leftType, rightType] = [leftType.findRoot(), rightType.findRoot()]
+  return if leftType is rightType
+  # if one of them is totally unknown, it's safe to link them.
+  unless leftType.basic?
+    return leftType.synonym = rightType
+  unless rightType.basic?
+    return rightType.synonym = leftType
+  unless leftType.basic is rightType.basic
+    throw TypeError "incompatible types #{leftType.basic} and #{rightType.basic}"
+  unless leftType.basic is "func"
+    return leftType.synonym = rightType
+  unless leftType.args.length is rightType.args.length
+    throw TypeError "number of arguments must match"
+  for leftArg, i in leftType.args
+    rightArg = rightType.args[i]
+    linkTypes leftArg, rightArg
+  linkTypes leftType.returnType, rightType.returnType
+  # seems legit
+  leftType.synonym = rightType
+
 class Variable
-  constructor: (@name, @type, @namespace) ->
-  mangledName: ->
-    "_" + @name
+  constructor: (@label, @type, @namespace) ->
 class Func
-  constructor: (@label, @code) ->
+  constructor: (@label, @codeNode) ->
 
 class Namespace
-  constructor: (@parent) ->
+  constructor: (@parent)->
     @names = {}
-    @root = @parent?.root
+    if @parent?
+      @root = @parent.root
+    else
+      @root = this
+      @extraAsm = []
+      labelCount = 0
+      @nextLabel = -> "_#{labelCount++}"
   find: (name) ->
     @names[name] or @parent?.find name
-  createLocalNamespace: ->
-    new LocalNamespace this
-class LocalNamespace extends Namespace
-  constructor: (args...) ->
-    super(args...)
-    createRootRedirect = (name) =>
-      @[name] = (args...) ->
-        @root[name](args...)
-    createRootRedirect "createLiteralString"
-    createRootRedirect "createFunc"
   createVariable: (name, type) ->
-    variable = new Variable name, type
-class GlobalNamespace extends Namespace
-  constructor: ->
-    super(null)
-    @root = this
-    @variables = []
-    @funcs = []
-    labelCount = 0
-    @nextLabel = -> "_#{labelCount++}"
-  createVariable: (name, type) ->
-    variable = new Variable name, type, this
+    variable = new Variable "_"+name, type, this
     @names[name] = variable
-    @variables.push variable
+    @root.extraAsm.push variable
     variable
   createLiteralString: (value) ->
-    label = @nextLabel()
+    label = @root.nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
-    @variables.push {asm}
+    @root.extraAsm.push {asm}
     label
-  createFunc: (code) ->
-    func = new Func @nextLabel(), code
-    @funcs.push func
-    @variables.push func
+  createFunc: (codeNode) ->
+    func = new Func @root.nextLabel(), codeNode
+    @root.extraAsm.push func
     func
+  createSubNamespace: ->
+    new Namespace this
 
 #### Base
 
@@ -226,17 +236,13 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compileRoot: ->
-    o = {namespace: new GlobalNamespace}
-    o.namespace.createVariable("printc", getType new Type "func", [intType]).asm = stdlib.printc
-    o.namespace.createVariable("prints", getType new Type "func", [stringType]).asm = stdlib.prints
+    o = {namespace: new Namespace}
+    o.namespace.createVariable("printc", new Type "func", [intType], voidType).asm = stdlib.printc
+    o.namespace.createVariable("prints", new Type "func", [stringType], voidType).asm = stdlib.prints
     code = @compileStatement o
     codes = [code, "set [0x8ffe], 0\n"]
 
-    # breadth-first traversal through declared functions
-    for func in o.namespace.funcs
-      func.asm = func.code.compileFunc o
-
-    for variable in o.namespace.variables
+    for variable in o.namespace.extraAsm
       codes.push variable.asm
     codes.join "\n"
   compileStatement: (o) ->
@@ -268,7 +274,7 @@ exports.Literal = class Literal extends Base
     unless @type?
       variable = o.namespace.find @value
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
-      return {type: variable.type, access: "[#{variable.mangledName()}]"}
+      return {type: variable.type, access: "[#{variable.label}]"}
     switch @type
       when "int" then {type: intType, access: @value}
       when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
@@ -369,11 +375,11 @@ exports.Comment = class Comment extends Base
 # Node for a function invocation. Takes care of converting `super()` calls into
 # calls against the prototype's function of the same name.
 exports.Call = class Call extends Base
-  constructor: (variable, @args = []) ->
+  constructor: (variable, @argNodes = []) ->
     @isNew    = false
     @variable = variable
 
-  children: ['variable', 'args']
+  children: ['variable', 'argNodes']
 
   compileStatement: (o) ->
     funcName = @variable.unwrapAll().value
@@ -381,15 +387,18 @@ exports.Call = class Call extends Base
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
     unless funcVariable.type.basic is "func"
       throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type.string}\""
-    unless funcVariable.type.args.length is @args.length
-      throw SyntaxError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@args.length}"
-    codes = []
-    for arg, i in @args
-      arg = arg.unwrapAll().compileExpression o
-      unless funcVariable.type.args[i] is arg.type
-        throw SyntaxError "argument #{i} to function #{funcName} should have type #{funcVariable.type.args[i].string}, rather than #{arg.type.string}"
-      codes.push "set push, #{arg.access}"
-    codes.push "jsr #{funcVariable.mangledName()}"
+    unless funcVariable.type.args.length is @argNodes.length
+      throw SyntaxError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@argNodes.length}"
+    args = []
+    for argNode in @argNodes
+      arg = argNode.unwrapAll().compileExpression o
+      forbidVoid arg
+      args.push arg
+    callType = new Type "func", (arg.type for arg in args)
+    linkTypes funcVariable.type, callType
+
+    codes = ("set push, #{arg.access}" for arg in args)
+    codes.push "jsr #{funcVariable.label}"
     return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
@@ -553,12 +562,15 @@ exports.Assign = class Assign extends Base
     variable = o.namespace.find name
     if @context is ":="
       throw SyntaxError "variable \"#{name}\" is already declared" if variable?.namespace is o.namespace
-      variable = o.namespace.createVariable name, value.type
-      variable.asm = ":#{variable.mangledName()} dat 0"
+      variableType = new Type
+      variable = o.namespace.createVariable name, variableType
+      linkTypes variableType, value.type
+      variable.asm = ":#{variable.label} dat 0"
     else
-      throw SyntaxError "variable \"#{name}\" is not declared" unless variable?
-      throw TypeError "cannot assign value of type \"#{value.type.string}\" to variable of type \"#{variable.type.string}\"" unless value.type is variable.type
-    "set [#{variable.mangledName()}], #{value.access}"
+      unless variable?
+        throw SyntaxError "variable \"#{name}\" is not declared"
+      linkTypes value.type, variable.type
+    "set [#{variable.label}], #{value.access}"
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -579,13 +591,14 @@ exports.Code = class Code extends Base
     @context = '_this' if @bound
 
   compileExpression: (o) ->
-    throw SyntaxError "func declarations cannot have parameters" unless @params.length is 0
     @func = o.namespace.createFunc this
-    {type: getType(new Type "func"), access: @func.label}
+    {type: new Type("func", (new Type for _ in @params)), access: @func.label}
 
   compileFunc: (o) ->
-    o = {namespace: o.namespace.createLocalNamespace()}
+    o = {namespace: o.namespace.createSubNamespace()}
     code = @body.compileStatement o
+    # TODO figure returning stuff
+    @func.type.returnType = voidType
     returnCode = "set pc, pop"
     ":#{@func.label}\n#{code}\n#{returnCode}"
 
