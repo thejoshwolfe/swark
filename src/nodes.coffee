@@ -23,13 +23,17 @@ THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
 class Type
-  constructor: (@basic, @args=[], @returnType) ->
+  constructor: (@basic, @args, @returnType) ->
     @synonym = this
-    if @basic is "func" and not @returnType?
-      @returnType = new Type
+    @codeNodes = []
   findRoot: ->
     return this if this is @synonym
     return @synonym = @synonym.findRoot()
+  linkTo: (otherType) ->
+    throw "assertion failed. everything's broken" unless @synonym is this and otherType.synonym is otherType
+    @synonym = otherType
+    # combine our lists of code nodes
+    otherType.codeNodes = otherType.codeNodes?.concat @codeNodes
 voidType = new Type "void"
 intType = new Type "int"
 stringType = new Type "string"
@@ -42,13 +46,13 @@ linkTypes = (leftType, rightType) ->
   return if leftType is rightType
   # if one of them is totally unknown, it's safe to link them.
   unless leftType.basic?
-    return leftType.synonym = rightType
+    return leftType.linkTo rightType
   unless rightType.basic?
-    return rightType.synonym = leftType
+    return rightType.linkTo leftType
   unless leftType.basic is rightType.basic
     throw TypeError "incompatible types #{leftType.basic} and #{rightType.basic}"
   unless leftType.basic is "func"
-    return leftType.synonym = rightType
+    return leftType.linkTo rightType
   unless leftType.args.length is rightType.args.length
     throw TypeError "number of arguments must match"
   for leftArg, i in leftType.args
@@ -56,7 +60,7 @@ linkTypes = (leftType, rightType) ->
     linkTypes leftArg, rightArg
   linkTypes leftType.returnType, rightType.returnType
   # seems legit
-  leftType.synonym = rightType
+  leftType.linkTo rightType
 
 class Variable
   constructor: (@label, @type, @namespace) ->
@@ -66,29 +70,29 @@ class Func
 class Namespace
   constructor: (@parent)->
     @names = {}
-    if @parent?
-      @root = @parent.root
-    else
+    unless @parent?
       @root = this
       @extraAsm = []
       labelCount = 0
       @nextLabel = -> "_#{labelCount++}"
+    else
+      @root = @parent.root
+      @extraAsm = @root.extraAsm
+      @nextLabel = @root.nextLabel
   find: (name) ->
     @names[name] or @parent?.find name
   createVariable: (name, type) ->
     variable = new Variable "_"+name, type, this
     @names[name] = variable
-    @root.extraAsm.push variable
+    @extraAsm.push variable
     variable
   createLiteralString: (value) ->
-    label = @root.nextLabel()
+    label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
-    @root.extraAsm.push {asm}
+    @extraAsm.push {asm}
     label
   createFunc: (codeNode) ->
-    func = new Func @root.nextLabel(), codeNode
-    @root.extraAsm.push func
-    func
+    new Func @nextLabel(), codeNode
   createSubNamespace: ->
     new Namespace this
 
@@ -385,18 +389,21 @@ exports.Call = class Call extends Base
     funcName = @variable.unwrapAll().value
     funcVariable = o.namespace.find funcName
     throw SyntaxError "undefined variable \"#{funcName}\"" unless funcVariable?
-    unless funcVariable.type.basic is "func"
-      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcVariable.type.string}\""
-    unless funcVariable.type.args.length is @argNodes.length
-      throw SyntaxError "function \"#{funcName}\" takes #{funcVariable.type.args.length} argument, not #{@argNodes.length}"
+    funcType = funcVariable.type.findRoot()
+    unless funcType.basic is "func"
+      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcType.string}\""
+    unless funcType.args.length is @argNodes.length
+      throw SyntaxError "function \"#{funcName}\" takes #{funcType.args.length} argument, not #{@argNodes.length}"
     args = []
     for argNode in @argNodes
       arg = argNode.unwrapAll().compileExpression o
       forbidVoid arg
       args.push arg
-    callType = new Type "func", (arg.type for arg in args)
-    linkTypes funcVariable.type, callType
-
+    callType = new Type "func", (arg.type for arg in args), new Type
+    linkTypes funcType, callType
+    # good news, guys: you're parameter types are now known!
+    for codeNode in callType.findRoot().codeNodes
+      codeNode.compileFunc o
     codes = ("set push, #{arg.access}" for arg in args)
     codes.push "jsr #{funcVariable.label}"
     return codes.join("\n")
@@ -592,15 +599,17 @@ exports.Code = class Code extends Base
 
   compileExpression: (o) ->
     @func = o.namespace.createFunc this
-    {type: new Type("func", (new Type for _ in @params)), access: @func.label}
+    @func.type = new Type "func", (new Type for _ in @params), new Type
+    @func.type.codeNodes.push this
+    {type: @func.type, access: @func.label}
 
   compileFunc: (o) ->
     o = {namespace: o.namespace.createSubNamespace()}
     code = @body.compileStatement o
     # TODO figure returning stuff
-    @func.type.returnType = voidType
+    linkTypes @func.type.findRoot().returnType, voidType
     returnCode = "set pc, pop"
-    ":#{@func.label}\n#{code}\n#{returnCode}"
+    o.namespace.extraAsm.push {asm: ":#{@func.label}\n#{code}\n#{returnCode}"}
 
   children: ['params', 'body']
 
