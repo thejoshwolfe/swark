@@ -80,8 +80,8 @@ class Namespace
       @root = @parent.root
       @extraAsm = @root.extraAsm
       @nextLabel = @root.nextLabel
-    @localVariableCount = 1 # return address is at index 0
-    @nextLocalOffset = -> -@localVariableCount++
+    @localVariableCount = 0
+    @nextLocalOffset = -> -++@localVariableCount
   find: (name) ->
     @names[name] or @parent?.find name
   createVariable: (name, type, localOffset) ->
