@@ -1,2 +1,2 @@
-printc (-> 65)()
+printc (-> return 65)()
 printc 10
