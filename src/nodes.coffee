@@ -425,7 +425,7 @@ exports.Call = class Call extends Base
       args.push arg
     callType = new Type "func", (arg.type for arg in args), new Type
     linkTypes funcType, callType
-    # good news, guys: you're parameter types are now known!
+    # good news, guys: your parameter types are now known!
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
     codes = []

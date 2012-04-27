@@ -17,7 +17,7 @@ exports.RESERVED = RESERVED
 # Compile a string of code 
 exports.compile = compile = (code, options = {}) ->
   try
-    dasm = (parser.parse lexer.tokenize code).compileRoot options
+    dasm = something compileToIntermediate(code, options)
   catch err
     err.message = "In #{options.filename}, #{err.message}" if options.filename
     throw err
@@ -25,38 +25,16 @@ exports.compile = compile = (code, options = {}) ->
   "; #{header}\n\n#{dasm}"
 
 # Tokenize a string of code, and return the array of tokens.
-exports.tokens = (code, options) ->
+exports.tokenize = tokenize = (code, options) ->
   lexer.tokenize code, options
 
-# Parse a string code or an array of lexed tokens, and
-# return the AST. You can then compile it by calling `.compile()` on the root,
-# or traverse it by using `.traverseChildren()` with a callback.
-exports.nodes = (source, options) ->
-  if typeof source is 'string'
-    parser.parse lexer.tokenize source, options
-  else
-    parser.parse source
+# Parse a string of code, and return the AST.
+exports.parse = parse = (source, options) ->
+  parser.parse tokenize source, options
 
-# Compile and execute a string of code, correctly
-# setting `__filename`, `__dirname`, and relative `require()`.
-exports.run = (code, options = {}) ->
-  mainModule = require.main
-
-  # Set the filename.
-  mainModule.filename = process.argv[1] =
-      if options.filename then fs.realpathSync(options.filename) else '.'
-
-  # Clear the module cache.
-  mainModule.moduleCache and= {}
-
-  # Assign paths for node_modules loading
-  mainModule.paths = require('module')._nodeModulePaths path.dirname fs.realpathSync options.filename
-
-  # Compile.
-  if path.extname(mainModule.filename) isnt '.swark' or require.extensions
-    mainModule._compile compile(code, options), mainModule.filename
-  else
-    mainModule._compile code, mainModule.filename
+# Compile a string of code to intermediate instructions.
+exports.compileToIntermediate = compileToIntermediate = (source, options) ->
+  parse(source, options).compileToIntermediate()
 
 # Compile and evaluate a string of code (in a Node.js-like environment).
 # The REPL uses this to run the input.

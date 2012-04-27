@@ -22,15 +22,16 @@ BANNER = '''
 # The list of all the valid option flags that `swark` knows how to handle.
 SWITCHES = [
   ['-e', '--eval',            'pass a string from the command line as input']
-  ['-h', '--help',            'display this help message']
-  ['-i', '--interactive',     'run an interactive REPL']
+  ['-i', '--interactive',     'run an interactive REPL (currently broken)']
+  ['-t', '--tokens',          'print out the tokens that the lexer/rewriter produce']
   ['-n', '--nodes',           'print out the parse tree that the parser produces']
-  ['-o', '--output [FILE]',   'set the output file for compiled DCPU16 code']
+  ['-m', '--intermediate',    'print out the intermediate instructions']
   ['-p', '--print',           'print out the compiled DCPU16 assembly']
+  ['-o', '--output [FILE]',   'set the output file for compiled DCPU16 code']
   ['-s', '--stdio',           'listen for and compile scripts over stdio']
   ['-a', '--assembly',        'treat input as dcpu16 assembly instead of swark']
-  ['-t', '--tokens',          'print out the tokens that the lexer/rewriter produce']
   ['-v', '--version',         'display the version number']
+  ['-h', '--help',            'display this help message']
 ]
 
 # Top-level objects shared by all the functions.
@@ -78,15 +79,15 @@ compileScript = (file, input, base) ->
   options = {filename: file}
 
   try
-    t = task = {file, input, options}
-    if      o.tokens      then printTokens Swark.tokens t.input
-    else if o.nodes       then printLine Swark.nodes(t.input).toString().trim()
+    if      o.tokens      then printTokens Swark.tokenize input
+    else if o.nodes       then printLine Swark.parse(input).toString().trim()
+    else if o.intermediate then printIntermediate Swark.compileToIntermediate input
     else if o.run
-      require('./dcpu16exec').runAssembly Swark.compile(t.input, t.options)
+      require('./dcpu16exec').runAssembly Swark.compile(input, options)
     else
-      t.output = Swark.compile t.input, t.options
-      if o.print          then printLine t.output.trim()
-      if o.output         then fs.writeFileSync o.output, t.output, "utf8"
+      output = Swark.compile input, options
+      if o.print          then printLine output.trim()
+      if o.output         then fs.writeFileSync o.output, output, "utf8"
   catch err
     printWarn err instanceof Error and err.stack or "ERROR: #{err}"
     process.exit 1
