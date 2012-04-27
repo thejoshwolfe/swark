@@ -632,6 +632,7 @@ exports.Code = class Code extends Base
     @body    = body or new Block
     @bound   = tag is 'boundfunc'
     @context = '_this' if @bound
+    @compiled = false
 
   compileExpression: (o) ->
     @label = o.namespace.nextLabel()
@@ -640,11 +641,16 @@ exports.Code = class Code extends Base
     {type: @type, access: @label}
 
   compileFunc: (o) ->
+    return if @compiled
+    @compiled = true
     o = {namespace: o.namespace.createSubNamespace()}
     codes = []
     codes.push ":#{@label}"
     # we need z because sp can't be offset inline
     codes.push "set z, sp"
+    # dude, check out these parameters
+    for paramNode, i in @params
+      o.namespace.createVariable paramNode.name.value, @type.args[i], @params.length - i
     body = @body.compileStatement o
     codes.push body if body
     # TODO figure out how to return stuff
