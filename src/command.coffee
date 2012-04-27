@@ -110,8 +110,9 @@ printTokens = (tokens) ->
   printLine strings.join(' ')
 
 # Pretty-print intermediate instructions
-printIntermediate = (something) ->
-  console.log something
+printIntermediate = (instructions) ->
+  for instruction in instructions
+    console.log instruction.toString()
 
 # Use the [OptionParser module](optparse.html) to extract all options from
 # `process.argv` that are specified in `SWITCHES`.

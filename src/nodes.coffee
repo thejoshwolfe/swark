@@ -3,7 +3,11 @@
 # but some are created by other nodes as a method of code generation.
 
 stdlib = require './stdlib'
-{RawInstruction} = require './intermediate'
+{
+  RawInstruction,
+  SetInstruction,
+  CallInstruction,
+} = require './intermediate'
 
 # Return a flattened version of an array.
 # Handy for getting a list of `children` from the nodes.
@@ -38,8 +42,8 @@ class Type
 voidType = new Type "void"
 intType = new Type "int"
 stringType = new Type "string"
-forbidVoid = (compiledThing) ->
-  if compiledThing.type is voidType
+forbidVoid = (type) ->
+  if type is voidType
     throw TypeError "that thing can't be void"
 linkTypes = (leftType, rightType) ->
   # TODO: detect circularity
@@ -69,7 +73,7 @@ class Variable
     @access = "[z+0x#{positive.toString 16}]"
 
 class Namespace
-  constructor: (@parent)->
+  constructor: (@parent) ->
     @names = {}
     unless @parent?
       @root = this
@@ -98,7 +102,7 @@ class Namespace
     label = @nextLabel()
     @extraAsm.push {asm: ":#{label}\n#{asm}"}
     variable = @createVariable name, type
-    new RawInstruction "set #{variable.access}, #{label}"
+    new SetInstruction variable.access, label
   createLiteralString: (value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
@@ -291,7 +295,7 @@ exports.Literal = class Literal extends Base
       while namespace?
         break if (variable = namespace.names[@value])?
         # access an outter scope
-        o.instructions.push new RawInstruction "set x, [#{stackRegister}+#{namespace.parameterCount + 1}]"
+        o.instructions.push new SetInstruction "x", "[#{stackRegister}+#{namespace.parameterCount + 1}]"
         stackRegister = "x"
         namespace = namespace.parent
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
@@ -410,30 +414,19 @@ exports.Call = class Call extends Base
       throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcType.string}\""
     unless funcType.args.length is @argNodes.length
       throw SyntaxError "function \"#{funcName}\" takes #{funcType.args.length} argument, not #{@argNodes.length}"
-    args = []
+    argAccesses = []
+    argTypes = []
     for argNode in @argNodes
-      arg = argNode.unwrapAll().compileExpression o
-      forbidVoid arg
-      args.push arg
-    callType = new Type "func", (arg.type for arg in args), new Type
+      {type: argType, access: argAccess} = argNode.unwrapAll().compileExpression o
+      forbidVoid argType
+      argTypes.push argType
+      argAccesses.push argAccess
+    callType = new Type "func", argTypes, new Type
     linkTypes funcType, callType
     # good news, guys: your parameter types are now known!
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
-    codes = []
-    # position the stack just after our local variables
-    o.instructions.push new RawInstruction "sub sp, #{o.namespace.localVariableCount}"
-    # don't forget the secret close context
-    o.instructions.push new RawInstruction "set push, z"
-    for arg in args
-      codes.push arg.asm if arg.asm
-      o.instructions.push new RawInstruction "set push, #{arg.access}"
-    codes.push funcValue.asm if funcValue.asm
-    o.instructions.push new RawInstruction "jsr #{funcValue.access}"
-    # restore the stack and z
-    o.instructions.push new RawInstruction "add sp, #{o.namespace.localVariableCount}"
-    o.instructions.push new RawInstruction "set z, sp"
-    return codes.join("\n")
+    o.instructions.push new CallInstruction funcValue.access, argAccesses, o.namespace
 
   # Tag this invocation as creating a new instance.
   newInstance: ->
@@ -603,11 +596,7 @@ exports.Assign = class Assign extends Base
       unless variable?
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
-    codes = []
-    codes.push variable.asm if variable.asm # TODO: this doesn't make sense
-    codes.push value.asm if value.asm
-    o.instructions.push new RawInstruction "set #{variable.access}, #{value.access}"
-    codes.join "\n"
+    o.instructions.push new SetInstruction variable.access, value.access
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -637,21 +626,18 @@ exports.Code = class Code extends Base
   compileFunc: (o) ->
     return if @compiled
     @compiled = true
-    o = {namespace: o.namespace.createSubNamespace()}
-    codes = []
-    codes.push ":#{@label}"
+    o = {namespace: o.namespace.createSubNamespace(), instructions: []}
+
     # we need z because sp can't be offset inline
     o.instructions.push new RawInstruction "set z, sp"
     # dude, check out these parameters
     for paramNode, i in @params
       o.namespace.createVariable paramNode.name.value, @type.args[i], @params.length - i
-    body = @body.compileStatement o
-    codes.push body if body
+    @body.compileStatement o
     # TODO figure out how to return stuff
     linkTypes @type.findRoot().returnType, voidType
     o.instructions.push new RawInstruction "add sp, #{o.namespace.parameterCount + 2}"
     o.instructions.push new RawInstruction "set pc, [z]"
-    o.namespace.extraAsm.push asm: codes.join "\n"
 
   children: ['params', 'body']
 
