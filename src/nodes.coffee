@@ -97,7 +97,7 @@ class Namespace
     label = @nextLabel()
     @extraAsm.push {asm: ":#{label}\n#{asm}"}
     variable = @createVariable name, type
-    "set #{variable.access}, #{label}"
+    @indent "set #{variable.access}, #{label}"
   createLiteralString: (value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
@@ -105,6 +105,8 @@ class Namespace
     label
   createSubNamespace: ->
     new Namespace this
+  indent: (line) ->
+    "    " + line
 
 #### Base
 
@@ -258,7 +260,7 @@ exports.Block = class Block extends Base
     codes.push "; main"
     codes.push @compileStatement o
     codes.push "; exit"
-    codes.push "set [0x8ffe], 0"
+    codes.push o.namespace.indent "set [0x8ffe], 0"
     codes.push ""
 
     for variable in o.namespace.extraAsm
@@ -297,7 +299,7 @@ exports.Literal = class Literal extends Base
       while namespace?
         break if (variable = namespace.names[@value])?
         # access an outter scope
-        codes.push "set x, [#{stackRegister}+#{namespace.parameterCount + 1}]"
+        codes.push o.namespace.indent "set x, [#{stackRegister}+#{namespace.parameterCount + 1}]"
         stackRegister = "x"
         namespace = namespace.parent
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
@@ -428,17 +430,17 @@ exports.Call = class Call extends Base
       codeNode.compileFunc o
     codes = []
     # position the stack just after our local variables
-    codes.push "sub sp, #{o.namespace.localVariableCount}"
+    codes.push o.namespace.indent "sub sp, #{o.namespace.localVariableCount}"
     # don't forget the secret close context
-    codes.push "set push, z"
+    codes.push o.namespace.indent "set push, z"
     for arg in args
       codes.push arg.asm if arg.asm
-      codes.push "set push, #{arg.access}"
+      codes.push o.namespace.indent "set push, #{arg.access}"
     codes.push funcValue.asm if funcValue.asm
-    codes.push "jsr #{funcValue.access}"
+    codes.push o.namespace.indent "jsr #{funcValue.access}"
     # restore the stack and z
-    codes.push "add sp, #{o.namespace.localVariableCount}"
-    codes.push "set z, sp"
+    codes.push o.namespace.indent "add sp, #{o.namespace.localVariableCount}"
+    codes.push o.namespace.indent "set z, sp"
     return codes.join("\n")
 
   # Tag this invocation as creating a new instance.
@@ -612,7 +614,7 @@ exports.Assign = class Assign extends Base
     codes = []
     codes.push variable.asm if variable.asm # TODO: this doesn't make sense
     codes.push value.asm if value.asm
-    codes.push "set #{variable.access}, #{value.access}"
+    codes.push o.namespace.indent "set #{variable.access}, #{value.access}"
     codes.join "\n"
 
   isStatement: (o) ->
@@ -647,7 +649,7 @@ exports.Code = class Code extends Base
     codes = []
     codes.push ":#{@label}"
     # we need z because sp can't be offset inline
-    codes.push "set z, sp"
+    codes.push o.namespace.indent "set z, sp"
     # dude, check out these parameters
     for paramNode, i in @params
       o.namespace.createVariable paramNode.name.value, @type.args[i], @params.length - i
@@ -655,8 +657,8 @@ exports.Code = class Code extends Base
     codes.push body if body
     # TODO figure out how to return stuff
     linkTypes @type.findRoot().returnType, voidType
-    codes.push "add sp, #{o.namespace.parameterCount + 2}"
-    codes.push "set pc, [z]"
+    codes.push o.namespace.indent "add sp, #{o.namespace.parameterCount + 2}"
+    codes.push o.namespace.indent "set pc, [z]"
     o.namespace.extraAsm.push asm: codes.join "\n"
 
   children: ['params', 'body']
