@@ -1,0 +1,10 @@
+a := ->
+  b := ->
+    c := ->
+      printc 65
+    c()
+    printc 66
+  b()
+  printc 67
+a()
+printc 10
