@@ -40,11 +40,9 @@ def main():
     parser.add_option('-f', '--failfast', help="Stop on first failed test", action="store_true")
     parser.add_option("-q", "--quiet", help="only print dots and summary", action="store_true")
     parser.add_option("-b", "--backwards", help="run tests in reverse order", action="store_true")
-    parser.add_option("-v", "--verbose", action="store_true", default=False)
+    parser.add_option("-p", "--print_failing", help="like -qv, but only print failing tests", action="store_true")
+    parser.add_option("-v", "--verbose", action="store_true")
     options, args = parser.parse_args()
-
-    if not options.quiet:
-        print("Loading test suite...")
 
     tests = {}
     valid_extensions = ['.swark', '.dasm']
@@ -109,7 +107,9 @@ def main():
 
     for test_name, test in test_list:
         def add_fail(message, letter, long_message):
-            if options.verbose:
+            if options.print_failing:
+                sys.stdout.write(test_name + "...")
+            if options.verbose or options.print_failing:
                 sys.stdout.write(term_red + message + term_clear + "\n")
             else:
                 sys.stdout.write(letter)
@@ -174,8 +174,8 @@ Run program exited with returncode %i\
             # must have been a pass
             if options.verbose:
                 sys.stdout.write(term_green + "pass" + term_clear + "\n")
-            else:
-                sys.stdout.write('.')
+            elif not options.print_failing:
+                sys.stdout.write(".")
             passed += 1
         sys.stdout.flush()
         if len(fails) != 0 and options.failfast:
