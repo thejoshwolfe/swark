@@ -17,7 +17,7 @@ exports.RESERVED = RESERVED
 # Compile a string of code 
 exports.compile = compile = (code, options = {}) ->
   try
-    dasm = something compileToIntermediate(code, options)
+    dasm = compileToAssembly code, options
   catch err
     err.message = "In #{options.filename}, #{err.message}" if options.filename
     throw err
@@ -35,6 +35,9 @@ exports.parse = parse = (source, options) ->
 # Compile a string of code to intermediate instructions.
 exports.compileToIntermediate = compileToIntermediate = (source, options) ->
   parse(source, options).compileToIntermediate()
+
+exports.compileToAssembly = compileToAssembly = (source, options) ->
+  compileToIntermediate(source, options).compileToAssembly()
 
 # Compile and evaluate a string of code (in a Node.js-like environment).
 # The REPL uses this to run the input.

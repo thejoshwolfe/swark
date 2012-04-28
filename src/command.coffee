@@ -81,7 +81,7 @@ compileScript = (file, input, base) ->
   try
     if      o.tokens      then printTokens Swark.tokenize input
     else if o.nodes       then printLine Swark.parse(input).toString().trim()
-    else if o.intermediate then printIntermediate Swark.compileToIntermediate input
+    else if o.intermediate then printLine Swark.compileToIntermediate(input).getIntermediateString()
     else if o.run
       require('./dcpu16exec').runAssembly Swark.compile(input, options)
     else
@@ -108,11 +108,6 @@ printTokens = (tokens) ->
     [tag, value] = [token[0], token[1].toString().replace(/\n/, '\\n')]
     "[#{tag} #{value}]"
   printLine strings.join(' ')
-
-# Pretty-print intermediate instructions
-printIntermediate = (instructions) ->
-  for instruction in instructions
-    console.log instruction.toString()
 
 # Use the [OptionParser module](optparse.html) to extract all options from
 # `process.argv` that are specified in `SWITCHES`.

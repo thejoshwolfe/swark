@@ -1,4 +1,24 @@
 
+exports.Program = class Program
+  constructor: ->
+    @parts = []
+  createPart: ->
+    part = {instructions: []}
+    @parts.push part
+    part
+  getIntermediateString: ->
+    result = []
+    for part in @parts
+      for instruction in part.instructions
+        result.push instruction.toString()
+    result.join "\n"
+  compileToAssembly: ->
+    result = []
+    for part in @parts
+      for instruction in part.instructions
+        result.push instruction.toAsm()
+    result.join "\n"
+
 exports.RawInstruction = class RawInstruction
   constructor: (@asm) ->
   toAsm: -> @asm

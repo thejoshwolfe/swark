@@ -4,6 +4,7 @@
 
 stdlib = require './stdlib'
 {
+  Program,
   RawInstruction,
   SetInstruction,
   CallInstruction,
@@ -77,12 +78,10 @@ class Namespace
     @names = {}
     unless @parent?
       @root = this
-      @extraAsm = []
       labelCount = 0
       @nextLabel = -> "_#{labelCount++}"
     else
       @root = @parent.root
-      @extraAsm = @root.extraAsm
       @nextLabel = @root.nextLabel
     @parameterCount = 0 # doesn't include secret closure context
     @localVariableCount = 0 # doesn't include parameters or the return address
@@ -98,15 +97,20 @@ class Namespace
     variable = new Variable localOffset, type, this
     @names[name] = variable
     variable
-  createBuiltinFunc: (name, type, asm) ->
+  createBuiltinFunc: (o, name, type, asm) ->
     label = @nextLabel()
-    @extraAsm.push {asm: ":#{label}\n#{asm}"}
+    o.program.createPart().instructions.push
+      # TODO this is ugly
+      toAsm: ->
+        ":#{label}\n#{asm}"
+      toString: ->
+        "builtin func #{JSON.stringify name}"
     variable = @createVariable name, type
-    new SetInstruction variable.access, label
-  createLiteralString: (value) ->
+    o.instructions.push new SetInstruction variable.access, label
+  createLiteralString: (o, value) ->
     label = @nextLabel()
     asm = ":#{label} dat #{value.length}, #{JSON.stringify value}"
-    @extraAsm.push {asm}
+    o.program.createPart().instructions.push new RawInstruction asm
     label
   createSubNamespace: ->
     new Namespace this
@@ -255,12 +259,13 @@ exports.Block = class Block extends Base
 
   # A **Block** is the only node that can serve as the root.
   compileToIntermediate: ->
-    o = {namespace: new Namespace, instructions: []}
-    o.instructions.push o.namespace.createBuiltinFunc "printc", new Type("func", [intType], voidType), stdlib.printc
-    o.instructions.push o.namespace.createBuiltinFunc "prints", new Type("func", [stringType], voidType), stdlib.prints
+    o = {namespace: new Namespace, program: new Program}
+    o.instructions = o.program.createPart().instructions
+    o.namespace.createBuiltinFunc o, "printc", new Type("func", [intType], voidType), stdlib.printc
+    o.namespace.createBuiltinFunc o, "prints", new Type("func", [stringType], voidType), stdlib.prints
     @compileStatement o
     o.instructions.push new RawInstruction "set [0x8ffe], 0"
-    o.instructions
+    o.program
 
   compileStatement: (o) ->
     codes = []
@@ -303,7 +308,7 @@ exports.Literal = class Literal extends Base
       return {type: variable.type, access: variable.access.replace("z", stackRegister), asm}
     switch @type
       when "int" then {type: intType, access: @value}
-      when "string" then {type: stringType, access: o.namespace.createLiteralString JSON.parse @value}
+      when "string" then {type: stringType, access: o.namespace.createLiteralString o, JSON.parse @value}
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -626,7 +631,8 @@ exports.Code = class Code extends Base
   compileFunc: (o) ->
     return if @compiled
     @compiled = true
-    o = {namespace: o.namespace.createSubNamespace(), instructions: []}
+    o = {namespace: o.namespace.createSubNamespace(), program: o.program}
+    o.instructions = o.program.createPart().instructions
 
     # we need z because sp can't be offset inline
     o.instructions.push new RawInstruction "set z, sp"
