@@ -9,11 +9,12 @@ exports.Program = class Program
     func
   createDataSection: (label, asm) ->
     @dataSections[label] = asm
-  getIntermediateString: -> @compileToAssembly()
-  compileToAssembly: ->
+  getIntermediateString: -> @getSomeString "toString"
+  compileToAssembly: -> @getSomeString "toAsm"
+  getSomeString: (stringGetterName) ->
     result = []
     for func in @funcs
-      result.push func.toAsm()
+      result.push func[stringGetterName]()
     result.push "; ========= data ========="
     for label, asm of @dataSections
       result.push ":#{label} #{asm}"
@@ -22,6 +23,14 @@ exports.Program = class Program
 exports.Func = class Func
   constructor: (@namespace, @label) ->
     @instructions = []
+  toString: ->
+    result = []
+    result.push "function #{@label or "main"} {"
+    for instruction in @instructions
+      result.push "    #{instruction.toString()}"
+    result.push "}"
+    result.push ""
+    result.join "\n"
   toAsm: ->
     isMain = not @namespace.parent?
     result = []
@@ -31,7 +40,6 @@ exports.Func = class Func
       # we need z because sp can't be offset inline
       result.push ":#{@label}"
       result.push "set z, sp"
-    # middle
     for instruction in @instructions
       result.push instruction.toAsm()
     if isMain

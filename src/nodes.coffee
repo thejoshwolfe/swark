@@ -38,7 +38,7 @@ class Type
     throw "assertion failed. everything's broken" unless @synonym is this and otherType.synonym is otherType
     @synonym = otherType
     # combine our lists of code nodes
-    otherType.codeNodes = otherType.codeNodes?.concat @codeNodes
+    otherType.codeNodes?.push @codeNodes...
 voidType = new Type "void"
 intType = new Type "int"
 stringType = new Type "string"
@@ -89,7 +89,7 @@ class Namespace
     @names[name] or @parent?.find name
   createVariable: (name, type, localOffset) ->
     if localOffset?
-      # try to figure out how many parameters with have
+      # try to figure out how many parameters we have
       @parameterCount = localOffset if localOffset > @parameterCount
     else
       localOffset = @nextLocalOffset()
@@ -616,6 +616,7 @@ exports.Code = class Code extends Base
 
   compileExpression: (o) ->
     @label = o.namespace.nextLabel()
+    @namespace = o.namespace.createSubNamespace()
     @type = new Type "func", (new Type for _ in @params), new Type
     @type.codeNodes.push this
     {type: @type, access: @label}
@@ -623,7 +624,7 @@ exports.Code = class Code extends Base
   compileFunc: (o) ->
     return if @compiled
     @compiled = true
-    o = {namespace: o.namespace.createSubNamespace(), program: o.program}
+    o = {namespace: @namespace, program: o.program}
     o.instructions = o.program.createFunc(o.namespace, @label).instructions
 
     # dude, check out these parameters
