@@ -1,28 +1,48 @@
 
 exports.Program = class Program
   constructor: ->
-    @parts = []
-  createPart: ->
-    part = {instructions: []}
-    @parts.push part
-    part
-  getIntermediateString: ->
-    result = []
-    for part in @parts
-      for instruction in part.instructions
-        result.push instruction.toString()
-    result.join "\n"
+    @funcs = []
+    @dataSections = {}
+  createFunc: (args...) ->
+    func = new Func args...
+    @funcs.push func
+    func
+  createDataSection: (label, asm) ->
+    @dataSections[label] = asm
+  getIntermediateString: -> @compileToAssembly()
   compileToAssembly: ->
     result = []
-    for part in @parts
-      for instruction in part.instructions
-        result.push instruction.toAsm()
+    for func in @funcs
+      result.push func.toAsm()
+    result.push "; ========= data ========="
+    for label, asm of @dataSections
+      result.push ":#{label} #{asm}"
     result.join "\n"
 
-exports.RawInstruction = class RawInstruction
-  constructor: (@asm) ->
-  toAsm: -> @asm
-  toString: -> "raw #{JSON.stringify @asm}"
+exports.Func = class Func
+  constructor: (@namespace, @label) ->
+    @instructions = []
+  toAsm: ->
+    isMain = not @namespace.parent?
+    result = []
+    if isMain
+      result.push "; main"
+    else
+      # we need z because sp can't be offset inline
+      result.push ":#{@label}"
+      result.push "set z, sp"
+    # middle
+    for instruction in @instructions
+      result.push instruction.toAsm()
+    if isMain
+      result.push "; exit"
+      result.push "set [0x8ffe], 0"
+    else
+      result.push "; return"
+      result.push "add sp, #{@namespace.parameterCount + 2}"
+      result.push "set pc, [z]"
+    result.push ""
+    result.join "\n"
 
 exports.SetInstruction = class SetInstruction
   constructor: (@dest, @source) ->
