@@ -635,6 +635,7 @@ exports.Code = class Code extends Base
     o.instructions = o.program.createPart().instructions
 
     # we need z because sp can't be offset inline
+    o.instructions.push new RawInstruction ":#{@label}"
     o.instructions.push new RawInstruction "set z, sp"
     # dude, check out these parameters
     for paramNode, i in @params
