@@ -68,9 +68,10 @@ linkTypes = (leftType, rightType) ->
   leftType.linkTo rightType
 
 class Variable
-  constructor: (@localOffset, @type, @namespace) ->
-    positive = (@localOffset + 0x10000) % 0x10000
-    @access = "[z+0x#{positive.toString 16}]"
+  constructor: (@type, @namespace) ->
+    @id = @namespace.nextVariableId()
+  readAccess: ->
+    @id
 
 class Namespace
   constructor: (@parent) ->
@@ -79,28 +80,27 @@ class Namespace
       @root = this
       labelCount = 0
       @nextLabel = -> "_#{labelCount++}"
+      idCount = 0
+      @nextVariableId = -> "{#{idCount++}}"
     else
       @root = @parent.root
       @nextLabel = @root.nextLabel
+      @nextVariableId = @root.nextVariableId
     @parameterCount = 0 # doesn't include secret closure context
     @localVariableCount = 0 # doesn't include parameters or the return address
-    @nextLocalOffset = -> -++@localVariableCount
   find: (name) ->
     @names[name] or @parent?.find name
-  createVariable: (name, type, localOffset) ->
-    if localOffset?
-      # try to figure out how many parameters we have
-      @parameterCount = localOffset if localOffset > @parameterCount
-    else
-      localOffset = @nextLocalOffset()
-    variable = new Variable localOffset, type, this
+  createVariable: (name, type, isParameter) ->
+    if isParameter
+      @parameterCount++
+    variable = new Variable type, this
     @names[name] = variable
     variable
   createBuiltinFunc: (o, name, type, asm) ->
     label = @nextLabel()
     o.program.createDataSection label, asm
     variable = @createVariable name, type
-    o.instructions.push new SetInstruction variable.access, label
+    o.instructions.push new SetInstruction variable.id, label
   createLiteralString: (o, value) ->
     label = @nextLabel()
     o.program.createDataSection label, "dat #{value.length}, #{JSON.stringify value}"
@@ -286,21 +286,12 @@ exports.Literal = class Literal extends Base
 
   compileExpression: (o) ->
     unless @type?
-      namespace = o.namespace
-      codes = []
-      stackRegister = "z"
-      while namespace?
-        break if (variable = namespace.names[@value])?
-        # access an outter scope
-        o.instructions.push new SetInstruction "x", "[#{stackRegister}+#{namespace.parameterCount + 1}]"
-        stackRegister = "x"
-        namespace = namespace.parent
+      throw "closures are broken for now" unless (variable = o.namespace.names[@value])?
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
-      asm = codes.join "\n" or null
-      return {type: variable.type, access: variable.access.replace("z", stackRegister), asm}
+      return variable
     switch @type
-      when "int" then {type: intType, access: @value}
-      when "string" then {type: stringType, access: o.namespace.createLiteralString o, JSON.parse @value}
+      when "int" then {type: intType, value: @value}
+      when "string" then {type: stringType, value: o.namespace.createLiteralString o, JSON.parse @value}
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -398,9 +389,7 @@ exports.Comment = class Comment extends Base
 # Node for a function invocation. Takes care of converting `super()` calls into
 # calls against the prototype's function of the same name.
 exports.Call = class Call extends Base
-  constructor: (variable, @argNodes = []) ->
-    @isNew    = false
-    @variable = variable
+  constructor: (@variable, @argNodes = []) ->
 
   children: ['variable', 'argNodes']
 
@@ -408,9 +397,9 @@ exports.Call = class Call extends Base
     funcValue = @variable.unwrapAll().compileExpression o
     funcType = funcValue.type.findRoot()
     unless funcType.basic is "func"
-      throw SyntaxError "can't call variable \"#{funcName}\" of type \"#{funcType.string}\""
+      throw SyntaxError "can't call something of type \"#{funcType.basic}\""
     unless funcType.args.length is @argNodes.length
-      throw SyntaxError "function \"#{funcName}\" takes #{funcType.args.length} argument, not #{@argNodes.length}"
+      throw SyntaxError "function takes #{funcType.args.length} arguments, not #{@argNodes.length}"
     argAccesses = []
     argTypes = []
     for argNode in @argNodes
@@ -424,15 +413,6 @@ exports.Call = class Call extends Base
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
     o.instructions.push new CallInstruction funcValue.access, argAccesses, o.namespace
-
-  # Tag this invocation as creating a new instance.
-  newInstance: ->
-    base = @variable?.base or @variable
-    if base instanceof Call and not base.isNew
-      base.newInstance()
-    else
-      @isNew = true
-    this
 
   # Walk through the objects in the arguments, moving over simple values.
   # This allows syntax like `call a: b, c` into `call({a: b}, c);`
@@ -593,7 +573,7 @@ exports.Assign = class Assign extends Base
       unless variable?
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
-    o.instructions.push new SetInstruction variable.access, value.access
+    o.instructions.push new SetInstruction variable.id, value.id
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -619,7 +599,7 @@ exports.Code = class Code extends Base
     @namespace = o.namespace.createSubNamespace()
     @type = new Type "func", (new Type for _ in @params), new Type
     @type.codeNodes.push this
-    {type: @type, access: @label}
+    {type: @type, value: @label}
 
   compileFunc: (o) ->
     return if @compiled
@@ -629,7 +609,7 @@ exports.Code = class Code extends Base
 
     # dude, check out these parameters
     for paramNode, i in @params
-      o.namespace.createVariable paramNode.name.value, @type.args[i], @params.length - i
+      o.namespace.createVariable paramNode.name.value, @type.args[i], true
     @body.compileStatement o
     # TODO figure out how to return stuff
     linkTypes @type.findRoot().returnType, voidType
@@ -765,9 +745,6 @@ exports.Op = class Op extends Base
     return new In first, second if op is 'in'
     if op is 'do'
       return @generateDo first
-    if op is 'new'
-      return first.newInstance() if first instanceof Call and not first.do and not first.isNew
-      first = new Parens first   if first instanceof Code and first.bound or first.do
     @operator = op
     @first    = first
     @second   = second
