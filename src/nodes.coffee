@@ -27,6 +27,10 @@ NO      = -> no
 THIS    = -> this
 NEGATE  = -> @negated = not @negated; this
 
+toHex = (n) ->
+  n = (n + 0x10000) % 0x10000
+  "0x#{n.toString 16}"
+
 class Type
   constructor: (@basic, @args, @returnType) ->
     @synonym = this
@@ -70,8 +74,9 @@ linkTypes = (leftType, rightType) ->
 class Variable
   constructor: (@type, @namespace) ->
     @id = @namespace.nextVariableId()
-  readAccess: ->
-    @id
+  toString: => @id
+  writableAsm: => @namespace.getStorageSpace @id
+  readableAsm: => @writableAsm()
 
 class Namespace
   constructor: (@parent) ->
@@ -88,6 +93,7 @@ class Namespace
       @nextVariableId = @root.nextVariableId
     @parameterCount = 0 # doesn't include secret closure context
     @localVariableCount = 0 # doesn't include parameters or the return address
+    @storageSpaces = {}
   find: (name) ->
     @names[name] or @parent?.find name
   createVariable: (name, type, isParameter) ->
@@ -100,13 +106,15 @@ class Namespace
     label = @nextLabel()
     o.program.createDataSection label, asm
     variable = @createVariable name, type
-    o.instructions.push new SetInstruction variable.id, label
+    o.instructions.push new SetInstruction variable, {toString: (-> label), readableAsm: -> label}
   createLiteralString: (o, value) ->
     label = @nextLabel()
     o.program.createDataSection label, "dat #{value.length}, #{JSON.stringify value}"
     label
   createSubNamespace: ->
     new Namespace this
+  getStorageSpace: (id) ->
+    @storageSpaces[id] ?= "[z+#{toHex(-++@localVariableCount)}]"
 
 #### Base
 
@@ -289,9 +297,14 @@ exports.Literal = class Literal extends Base
       throw "closures are broken for now" unless (variable = o.namespace.names[@value])?
       throw SyntaxError "undefined variable \"#{@value}\"" unless variable?
       return variable
-    switch @type
+    # readonly literal values
+    thingy = switch @type
       when "int" then {type: intType, value: @value}
       when "string" then {type: stringType, value: o.namespace.createLiteralString o, JSON.parse @value}
+    return {} =
+      type: thingy.type
+      toString: -> thingy.value
+      readableAsm: -> thingy.value
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -400,19 +413,19 @@ exports.Call = class Call extends Base
       throw SyntaxError "can't call something of type \"#{funcType.basic}\""
     unless funcType.args.length is @argNodes.length
       throw SyntaxError "function takes #{funcType.args.length} arguments, not #{@argNodes.length}"
-    argAccesses = []
+    args = []
     argTypes = []
     for argNode in @argNodes
-      {type: argType, access: argAccess} = argNode.unwrapAll().compileExpression o
-      forbidVoid argType
-      argTypes.push argType
-      argAccesses.push argAccess
+      arg = argNode.unwrapAll().compileExpression o
+      forbidVoid arg.type
+      argTypes.push arg.type
+      args.push arg
     callType = new Type "func", argTypes, new Type
     linkTypes funcType, callType
     # good news, guys: your parameter types are now known!
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
-    o.instructions.push new CallInstruction funcValue.access, argAccesses, o.namespace
+    o.instructions.push new CallInstruction funcValue, args, o.namespace
 
   # Walk through the objects in the arguments, moving over simple values.
   # This allows syntax like `call a: b, c` into `call({a: b}, c);`
@@ -573,7 +586,7 @@ exports.Assign = class Assign extends Base
       unless variable?
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
-    o.instructions.push new SetInstruction variable.id, value.id
+    o.instructions.push new SetInstruction variable, value
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context

@@ -54,12 +54,12 @@ exports.Func = class Func
 
 exports.SetInstruction = class SetInstruction
   constructor: (@dest, @source) ->
-  toAsm: -> "set #{@dest}, #{@source}"
-  toString: -> @toAsm()
+  toAsm: -> "set #{@dest.writableAsm()}, #{@source.readableAsm()}"
+  toString: -> "set #{@dest.toString()}, #{@source.toString()}"
 
 exports.CallInstruction = class CallInstruction
-  constructor: (@funcAccess, @argAccesses, @namespace) ->
-  toString: -> "call #{@funcAccess} (#{(" " + arg for arg in @argAccesses).join ","} )"
+  constructor: (@func, @args, @namespace) ->
+  toString: -> "call #{@func.toString()} (#{(" " + arg.toString() for arg in @args).join ","} )"
   toAsm: ->
     # position the stack just after our local variables
     codes = []
@@ -67,9 +67,9 @@ exports.CallInstruction = class CallInstruction
     codes.push "sub sp, #{@namespace.localVariableCount}"
     # don't forget the secret close context
     codes.push "set push, z"
-    for arg in @argAccesses
-      codes.push "set push, #{arg}"
-    codes.push "jsr #{@funcAccess}"
+    for arg in @args
+      codes.push "set push, #{arg.readableAsm()}"
+    codes.push "jsr #{@func.readableAsm()}"
     # restore the stack and z
     codes.push "add sp, #{@namespace.localVariableCount}"
     codes.push "set z, sp"
