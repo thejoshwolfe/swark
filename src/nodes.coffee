@@ -71,6 +71,10 @@ linkTypes = (leftType, rightType) ->
   # seems legit
   leftType.linkTo rightType
 
+class LiteralValue
+  constructor: (@type, @value) ->
+  toString: -> @value
+  readableAsm: -> @value
 class Variable
   constructor: (@type, @namespace) ->
     @id = @namespace.nextVariableId()
@@ -299,12 +303,8 @@ exports.Literal = class Literal extends Base
       return variable
     # readonly literal values
     thingy = switch @type
-      when "int" then {type: intType, value: @value}
-      when "string" then {type: stringType, value: o.namespace.createLiteralString o, JSON.parse @value}
-    return {} =
-      type: thingy.type
-      toString: -> thingy.value
-      readableAsm: -> thingy.value
+      when "int" then new LiteralValue intType, @value
+      when "string" then new LiteralValue stringType, o.namespace.createLiteralString o, JSON.parse @value
 
   makeReturn: ->
     if @isStatement() then this else super
@@ -612,7 +612,7 @@ exports.Code = class Code extends Base
     @namespace = o.namespace.createSubNamespace()
     @type = new Type "func", (new Type for _ in @params), new Type
     @type.codeNodes.push this
-    {type: @type, value: @label}
+    new LiteralValue @type, @label
 
   compileFunc: (o) ->
     return if @compiled
