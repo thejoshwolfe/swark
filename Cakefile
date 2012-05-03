@@ -70,11 +70,28 @@ build_parser = ->
     global[key] = val
   in_file = 'lib/swark/grammar.js'
   out_file = 'lib/swark/parser.js'
-  return unless get_mtime(in_file) > get_mtime(out_file)
-  console.log 'building parser'
-  require 'jison'
-  parser = require('./lib/swark/grammar').parser
-  fs.writeFile out_file, parser.generate()
+  if get_mtime(in_file) > get_mtime(out_file)
+    console.log 'building parser'
+    require 'jison'
+    parser = require('./lib/swark/grammar').parser
+    fs.writeFileSync out_file, parser.generate()
+  build_dropin_dasm()
+
+build_dropin_dasm = ->
+  source_regex = /^(.*)\.dasm(?:16)?$/
+  files = fs.readdirSync 'src'
+  files = (file for file in files when file.match source_regex)
+  out_dir = 'lib/swark'
+  to_source_file = (file) -> "src/" + file
+  to_out_file = (file) -> file.replace source_regex, "#{out_dir}/$1.js"
+  is_out_of_date = (file) ->
+    source_file = to_source_file file
+    out_file = to_out_file file
+    return get_mtime(source_file) > get_mtime(out_file)
+  files = (file for file in files when is_out_of_date file)
+  if files.length > 0
+    console.log "compiling #{files.length} dropin dasm file#{if files.length == 1 then "" else "s"} to js"
+    fs.writeFileSync to_out_file(file), "exports.source=#{JSON.stringify fs.readFileSync to_source_file(file), 'utf8'};\n" for file in files
 
 task 'build', 'build everything', build
 
