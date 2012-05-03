@@ -78,6 +78,7 @@ build_parser = ->
   build_dropin_dasm()
 
 build_dropin_dasm = ->
+  # TODO: code reuse?
   source_regex = /^(.*)\.dasm(?:16)?$/
   files = fs.readdirSync 'src'
   files = (file for file in files when file.match source_regex)

@@ -58,8 +58,8 @@ exports.SetInstruction = class SetInstruction
   toString: -> "set #{@dest.toString()}, #{@source.toString()}"
 
 exports.CallInstruction = class CallInstruction
-  constructor: (@func, @args, @namespace) ->
-  toString: -> "call #{@func.toString()} (#{(" " + arg.toString() for arg in @args).join ","} )"
+  constructor: (@func, @args, @namespace, @returnValue) ->
+  toString: -> "#{if @returnValue? then @returnValue.toString() + " = " else ""}call #{@func.toString()} (#{(" " + arg.toString() for arg in @args).join ","} )"
   toAsm: ->
     # position the stack just after our local variables
     codes = []

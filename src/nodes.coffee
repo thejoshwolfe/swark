@@ -110,7 +110,7 @@ class Namespace
     label = @nextLabel()
     o.program.createDataSection label, asm
     variable = @createVariable name, type
-    o.instructions.push new SetInstruction variable, {toString: (-> label), readableAsm: -> label}
+    o.instructions.push new SetInstruction variable, new LiteralValue type, label
   createLiteralString: (o, value) ->
     label = @nextLabel()
     o.program.createDataSection label, "dat #{value.length}, #{JSON.stringify value}"
@@ -268,14 +268,12 @@ exports.Block = class Block extends Base
     o.instructions = o.program.createFunc(o.namespace).instructions
     o.namespace.createBuiltinFunc o, "printc", new Type("func", [intType], voidType), stdlib.printc
     o.namespace.createBuiltinFunc o, "prints", new Type("func", [stringType], voidType), stdlib.prints
-    @compileStatement o
+    @compileExpression o
     o.program
 
-  compileStatement: (o) ->
-    codes = []
+  compileExpression: (o) ->
     for expression in @expressions
-      codes.push expression.compileStatement o
-    codes.join "\n"
+      expression.compileExpression o
 
   # Wrap up the given nodes as a **Block**, unless it already happens
   # to be one.
@@ -406,7 +404,7 @@ exports.Call = class Call extends Base
 
   children: ['variable', 'argNodes']
 
-  compileStatement: (o) ->
+  compileExpression: (o) ->
     funcValue = @variable.unwrapAll().compileExpression o
     funcType = funcValue.type.findRoot()
     unless funcType.basic is "func"
@@ -425,7 +423,10 @@ exports.Call = class Call extends Base
     # good news, guys: your parameter types are now known!
     for codeNode in callType.findRoot().codeNodes
       codeNode.compileFunc o
-    o.instructions.push new CallInstruction funcValue, args, o.namespace
+    if funcType.returnType.findRoot() isnt voidType
+      returnValue = new Variable funcType.returnType, o.namespace
+    o.instructions.push new CallInstruction funcValue, args, o.namespace, returnValue
+    returnValue
 
   # Walk through the objects in the arguments, moving over simple values.
   # This allows syntax like `call a: b, c` into `call({a: b}, c);`
@@ -573,7 +574,7 @@ exports.Assign = class Assign extends Base
 
   children: ['variable', 'value']
 
-  compileStatement: (o) ->
+  compileExpression: (o) ->
     name = @variable.unwrapAll().value
     value = @value.unwrapAll().compileExpression o
     variable = o.namespace.find name
@@ -587,6 +588,7 @@ exports.Assign = class Assign extends Base
         throw SyntaxError "variable \"#{name}\" is not declared"
       linkTypes value.type, variable.type
     o.instructions.push new SetInstruction variable, value
+    value
 
   isStatement: (o) ->
     o?.level is LEVEL_TOP and @context? and "?" in @context
@@ -623,7 +625,7 @@ exports.Code = class Code extends Base
     # dude, check out these parameters
     for paramNode, i in @params
       o.namespace.createVariable paramNode.name.value, @type.args[i], true
-    @body.compileStatement o
+    @body.compileExpression o
     # TODO figure out how to return stuff
     linkTypes @type.findRoot().returnType, voidType
 
