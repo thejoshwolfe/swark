@@ -1,0 +1,8 @@
+Vector := (x, y) =>
+  @x = x
+  @y = y
+v = Vector 65, 10
+
+printc v.x
+printc v.y
+
