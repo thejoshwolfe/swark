@@ -155,8 +155,8 @@ grammar =
   ]
 
   FuncGlyph: [
-    o '->',                                     -> 'func'
-    o '=>',                                     -> 'class'
+    o '->'
+    o '=>'
   ]
 
   # An optional, trailing comma.
@@ -183,6 +183,7 @@ grammar =
  # Function Parameters
   ParamVar: [
     o 'Identifier'
+    o 'ThisProperty'
     o 'Array'
     o 'Object'
   ]
@@ -197,6 +198,7 @@ grammar =
     o 'Identifier',                             -> new Value $1
     o 'Value Accessor',                         -> $1.add $2
     o 'Invocation Accessor',                    -> new Value $1, [].concat $2
+    o 'ThisProperty'
   ]
 
   # Everything that can be assigned to.
@@ -213,6 +215,7 @@ grammar =
     o 'Literal',                                -> new Value $1
     o 'Parenthetical',                          -> new Value $1
     o 'Range',                                  -> new Value $1
+    o 'This'
   ]
 
   # The general group of accessors into an object, by property, by prototype
@@ -260,6 +263,18 @@ grammar =
     o 'CALL_START CALL_END',                    -> []
     o 'CALL_START ArgList OptComma CALL_END',   -> $2
   ]
+
+  # A reference to the *this* current object.
+  This: [
+    o 'THIS',                                   -> new Value new Literal 'this'
+    o '@',                                      -> new Value new Literal 'this'
+  ]
+
+  # A reference to a property on *this*.
+  ThisProperty: [
+    o '@ Identifier',                           -> new Value new Literal('this'), [new Access($2)], 'this'
+  ]
+
 
   # The array literal.
   Array: [
@@ -365,6 +380,7 @@ grammar =
   # This enables support for pattern matching.
   ForValue: [
     o 'Identifier'
+    o 'ThisProperty'
     o 'Array',                                  -> new Value $1
     o 'Object',                                 -> new Value $1
   ]

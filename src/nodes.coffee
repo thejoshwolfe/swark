@@ -602,11 +602,8 @@ exports.Assign = class Assign extends Base
 # When for the purposes of walking the contents of a function body, the Code
 # has no *children* -- they're within the inner scope.
 exports.Code = class Code extends Base
-  constructor: (params, body, tag) ->
-    @params  = params or []
-    @body    = body or new Block
-    @bound   = tag is 'boundfunc'
-    @context = '_this' if @bound
+  constructor: (@params, @body, tag) ->
+    @isClass = tag is '=>'
     @compiled = false
 
   compileExpression: (o) ->
